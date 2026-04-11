@@ -22,6 +22,8 @@ MILESTONE_RULES = {
     "cancellation_dt": ("cancellation_ts", "min"),
 }
 
+FOCUS_WINDOWS_HOURS = [6, 72]
+
 FIELDS = [
     "test_code",
     "order_street",
@@ -219,6 +221,7 @@ def build_compact_dataset(zip_path: Path, member: str) -> dict:
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_zip": str(zip_path.name),
         "source_member": member,
+        "focus_windows_hours": FOCUS_WINDOWS_HOURS,
         "time_precision_hours_decimals": 6,
         "time_precision_seconds": True,
         "fields": FIELDS,

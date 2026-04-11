@@ -6,33 +6,19 @@ const DIMENSIONS = [
   "day_type",
 ];
 
-const STAGE_DEFS = [
-  { label: "Ordered", field: null, color: "#9AA0A6", rank: 0 },
-  { label: "Collected", field: "collected_h", color: "#F58518", rank: 1 },
-  { label: "Received", field: "received_h", color: "#54A24B", rank: 2 },
-  { label: "First Result", field: "first_result_h", color: "#E45756", rank: 3 },
-  { label: "Final Verified", field: "final_verified_h", color: "#1565C0", rank: 4 },
-  { label: "Cancelled", field: "cancellation_h", color: "#8B949E", rank: 5 },
+const STAGES = [
+  { label: "Collected", field: "collected_h", color: "#d85f41" },
+  { label: "Received", field: "received_h", color: "#0f766e" },
+  { label: "First Result", field: "first_result_h", color: "#b88618" },
+  { label: "Final Verified", field: "final_verified_h", color: "#2f6f45" },
 ];
 
-const TIMELINE_SERIES = [
-  { label: "Ordered", field: null, color: "#9AA0A6", dash: "dash", width: 2 },
-  { label: "Collected", field: "collected_h", color: "#F58518", width: 3 },
-  { label: "Received", field: "received_h", color: "#54A24B", width: 3 },
-  { label: "First Result", field: "first_result_h", color: "#E45756", width: 3 },
-  { label: "Final Verified", field: "final_verified_h", color: "#1565C0", width: 3 },
-  { label: "Likeliness of cancellation", field: "cancellation_h", color: "#8B949E", width: 3, dash: "dot", isCancellation: true },
+const WINDOW_CONFIGS = [
+  { key: "6", hours: 6, title: "6 hours", tone: "coral", color: "#d85f41" },
+  { key: "72", hours: 72, title: "72 hours", tone: "teal", color: "#0f766e" },
 ];
 
-const PRECISE_SECOND_FIELDS = {
-  collected_h: "collected_s",
-  received_h: "received_s",
-  first_result_h: "first_result_s",
-  final_verified_h: "final_verified_s",
-  cancellation_h: "cancellation_s",
-};
-
-const DEFAULT_FILTER = Object.freeze({
+const EMPTY_FILTERS = Object.freeze({
   test_code: "All",
   order_street: "All",
   test_performing_dept: "All",
@@ -40,1113 +26,698 @@ const DEFAULT_FILTER = Object.freeze({
   day_type: "All",
 });
 
+const PLOTLY_CONFIG = {
+  responsive: true,
+  displaylogo: false,
+  displayModeBar: false,
+};
+
+const PLOTLY_BASE_LAYOUT = {
+  paper_bgcolor: "transparent",
+  plot_bgcolor: "transparent",
+  margin: { t: 18, r: 20, b: 50, l: 68 },
+  font: {
+    family: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    size: 12,
+    color: "#182127",
+  },
+  hoverlabel: {
+    bgcolor: "#182127",
+    bordercolor: "transparent",
+    font: { color: "#ffffff" },
+  },
+  xaxis: {
+    gridcolor: "rgba(24, 33, 39, 0.08)",
+    zeroline: false,
+    linecolor: "rgba(24, 33, 39, 0.16)",
+  },
+  yaxis: {
+    gridcolor: "rgba(24, 33, 39, 0.08)",
+    zeroline: false,
+    linecolor: "rgba(24, 33, 39, 0.16)",
+  },
+  legend: {
+    orientation: "h",
+    x: 0,
+    y: 1.12,
+  },
+};
+
 const state = {
   dataset: null,
   records: [],
   index: {},
-  showComparison: false,
-  showCancellation: true,
-  scatterJitter: 0,
-  panels: {
-    left: { ...DEFAULT_FILTER },
-    right: { ...DEFAULT_FILTER },
-  },
+  filters: { ...EMPTY_FILTERS },
 };
 
 function byId(id) {
   return document.getElementById(id);
 }
 
-function status(text, isError = false) {
+function setStatus(text, isError = false) {
   const node = byId("status");
   node.textContent = text;
-  node.style.color = isError ? "#b42318" : "#6b7280";
+  node.style.color = isError ? "#b42318" : "#56616b";
 }
 
-function fmtPercent(v) {
-  return `${(v * 100).toFixed(1)}%`;
+function fmtInt(value) {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
-function fmtInt(v) {
-  return new Intl.NumberFormat("en-US").format(v);
+function fmtPercent(value) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function fmtHours(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  if (value < 1) return `${Math.round(value * 60)} min`;
+  return `${value.toFixed(value >= 10 ? 0 : 1)} h`;
 }
 
 function percentile(values, p) {
   if (!values.length) return NaN;
   const sorted = [...values].sort((a, b) => a - b);
-  const index = (sorted.length - 1) * p;
-  const low = Math.floor(index);
-  const high = Math.ceil(index);
+  const idx = (sorted.length - 1) * p;
+  const low = Math.floor(idx);
+  const high = Math.ceil(idx);
   if (low === high) return sorted[low];
-  const weight = index - low;
+  const weight = idx - low;
   return sorted[low] * (1 - weight) + sorted[high] * weight;
 }
 
-function validHour(v) {
-  return Number.isFinite(v) && v >= 0;
+function valueAt(rec, field) {
+  const index = state.index[field];
+  return Number.isInteger(index) ? rec[index] : null;
 }
 
-function hasIndex(field) {
-  return Number.isInteger(state.index[field]) && state.index[field] >= 0;
+function hourAt(rec, field) {
+  const value = valueAt(rec, field);
+  return typeof value === "number" && value >= 0 ? value : NaN;
 }
 
-function getHourValue(rec, hourField) {
-  if (!hourField) return 0;
-
-  const secondField = PRECISE_SECOND_FIELDS[hourField];
-  if (secondField && hasIndex(secondField)) {
-    const secs = rec[state.index[secondField]];
-    if (Number.isFinite(secs) && secs >= 0) return secs / 3600;
+function countWithin(records, field, hours) {
+  let count = 0;
+  for (const rec of records) {
+    const value = hourAt(rec, field);
+    if (Number.isFinite(value) && value <= hours) count += 1;
   }
-
-  if (!hasIndex(hourField)) return NaN;
-  const hours = rec[state.index[hourField]];
-  return Number.isFinite(hours) && hours >= 0 ? hours : NaN;
+  return count;
 }
 
-function getRelativeSeconds(rec, hourField) {
-  if (!hourField) return 0;
-  const secondField = PRECISE_SECOND_FIELDS[hourField];
-  if (!secondField || !hasIndex(secondField)) return NaN;
-  const secs = rec[state.index[secondField]];
-  return Number.isFinite(secs) && secs >= 0 ? secs : NaN;
+function shareWithin(records, field, hours) {
+  if (!records.length) return 0;
+  return countWithin(records, field, hours) / records.length;
 }
 
-function formatDurationLabel(seconds) {
-  const s = Math.max(0, seconds);
-  if (s < 60) return `${Math.round(s)}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  if (s < 86400) {
-    const h = s / 3600;
-    return `${Number(h.toFixed(h >= 10 ? 0 : 1))}h`;
+function getCompletedHours(records, field, upperBound = Infinity) {
+  const out = [];
+  for (const rec of records) {
+    const value = hourAt(rec, field);
+    if (Number.isFinite(value) && value <= upperBound) out.push(value);
   }
-  const d = s / 86400;
-  return `${Number(d.toFixed(d >= 10 ? 0 : 1))}d`;
+  return out;
 }
 
-function buildHourAxis(maxHours) {
-  const upper = Math.max(24, Math.ceil(maxHours));
-  let stepHours = 1;
-  if (upper > 72) stepHours = 2;
-  if (upper > 168) stepHours = 6;
-  if (upper > 24 * 14) stepHours = 24;
-  const tickvals = [];
-  for (let h = 0; h <= upper; h += stepHours) tickvals.push(h);
-  const ticktext = tickvals.map((h) => `${h}h`);
-  return {
-    type: "linear",
-    range: [0, upper + 0.001],
-    tickmode: "array",
-    tickvals,
-    ticktext,
-  };
+function distinctCount(records, field) {
+  const seen = new Set();
+  for (const rec of records) {
+    seen.add(valueAt(rec, field));
+  }
+  return seen.size;
 }
 
-function seededUnit(seed) {
-  const x = Math.sin(seed * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
+function filterRecords() {
+  return state.records.filter((rec) =>
+    DIMENSIONS.every((field) => {
+      const selected = state.filters[field];
+      return selected === "All" || valueAt(rec, field) === selected;
+    })
+  );
 }
 
-const PLOTLY_CONFIG = {
-  responsive: true,
-  displaylogo: false,
-  displayModeBar: false,
-  doubleClick: 'reset',
-};
+function topGroups(records, field, limit) {
+  const counts = new Map();
+  for (const rec of records) {
+    const key = valueAt(rec, field) || "Unknown";
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit);
+}
 
-const MODERN_LAYOUT = {
-  font: { 
-    family: '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif',
-    size: 12,
-    color: '#3f3f46'
-  },
-  paper_bgcolor: 'transparent',
-  plot_bgcolor: 'transparent',
-  hovermode: 'closest',
-  hoverlabel: {
-    bgcolor: 'rgba(24, 24, 27, 0.95)',
-    bordercolor: 'transparent',
-    font: { 
-      family: '-apple-system, BlinkMacSystemFont, "Inter", sans-serif',
-      size: 12,
-      color: '#fff'
+function fillSummaryStrip(records) {
+  const final6 = countWithin(records, "final_verified_h", 6);
+  const final72 = countWithin(records, "final_verified_h", 72);
+  const completed72 = getCompletedHours(records, "final_verified_h", 72);
+  const outsideWindow = records.length - final72;
+
+  const cards = [
+    {
+      tone: "teal",
+      label: "Orders in focus",
+      value: fmtInt(records.length),
+      note: `${fmtInt(distinctCount(records, "test_code"))} test codes in the filtered cohort`,
     },
-  },
-};
+    {
+      tone: "coral",
+      label: "Verified in 6 hours",
+      value: fmtPercent(records.length ? final6 / records.length : 0),
+      note: `${fmtInt(final6)} orders finish inside the same-day window`,
+    },
+    {
+      tone: "forest",
+      label: "Verified in 72 hours",
+      value: fmtPercent(records.length ? final72 / records.length : 0),
+      note: `${fmtInt(final72)} orders finish inside the three-day window`,
+    },
+    {
+      tone: "gold",
+      label: "Median verified time",
+      value: fmtHours(percentile(completed72, 0.5)),
+      note: `${fmtInt(outsideWindow)} orders remain outside the 72-hour focus window`,
+    },
+  ];
 
-function renderEmptyChart(target, title, message) {
+  byId("summary-strip").innerHTML = cards
+    .map(
+      (card) => `
+        <article class="summary-card" data-tone="${card.tone}">
+          <div>
+            <span>${card.label}</span>
+            <strong>${card.value}</strong>
+          </div>
+          <p>${card.note}</p>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function fillWindowMetrics(records) {
+  for (const windowConfig of WINDOW_CONFIGS) {
+    const medianVerified = percentile(getCompletedHours(records, "final_verified_h", windowConfig.hours), 0.5);
+    const cancellationShare = shareWithin(records, "cancellation_h", windowConfig.hours);
+    const cards = [
+      {
+        tone: windowConfig.tone,
+        label: "Final verified",
+        value: fmtPercent(shareWithin(records, "final_verified_h", windowConfig.hours)),
+        note: "Orders fully completed inside the window",
+      },
+      {
+        tone: "teal",
+        label: "Received",
+        value: fmtPercent(shareWithin(records, "received_h", windowConfig.hours)),
+        note: "Orders delivered to the lab inside the window",
+      },
+      {
+        tone: "gold",
+        label: "First result",
+        value: fmtPercent(shareWithin(records, "first_result_h", windowConfig.hours)),
+        note: "Orders producing a first result inside the window",
+      },
+      {
+        tone: "forest",
+        label: "Median verified time",
+        value: fmtHours(medianVerified),
+        note: `Cancellation share in ${windowConfig.hours}h: ${fmtPercent(cancellationShare)}`,
+      },
+    ];
+
+    byId(`window-${windowConfig.key}-metrics`).innerHTML = cards
+      .map(
+        (card) => `
+          <article class="metric-chip" data-tone="${card.tone}">
+            <div>
+              <span>${card.label}</span>
+              <strong>${card.value}</strong>
+            </div>
+            <p>${card.note}</p>
+          </article>
+        `
+      )
+      .join("");
+  }
+}
+
+function renderEmpty(targetId, message) {
   Plotly.react(
-    target,
+    targetId,
     [],
     {
-      ...MODERN_LAYOUT,
-      title: { 
-        text: title,
-        x: 0.02,
-        font: { size: 15, weight: 600, color: '#18181b' }
-      },
-      margin: { t: 50, r: 24, b: 42, l: 56 },
-      annotations: [
-        {
-          text: message,
-          xref: "paper",
-          yref: "paper",
-          x: 0.5,
-          y: 0.5,
-          showarrow: false,
-          font: { size: 14, color: '#71717a' },
-        },
-      ],
+      ...PLOTLY_BASE_LAYOUT,
+      margin: { t: 12, r: 12, b: 12, l: 12 },
       xaxis: { visible: false },
       yaxis: { visible: false },
+      annotations: [
+        {
+          x: 0.5,
+          y: 0.5,
+          xref: "paper",
+          yref: "paper",
+          showarrow: false,
+          text: message,
+          font: { size: 14, color: "#56616b" },
+        },
+      ],
     },
     PLOTLY_CONFIG
   );
 }
 
-function computeMaxHours(records) {
-  const keys = ["collected_h", "received_h", "first_result_h", "final_verified_h", "cancellation_h"];
-  const values = [];
-  for (const rec of records) {
-    for (const key of keys) {
-      const hours = getHourValue(rec, key);
-      if (validHour(hours)) values.push(hours);
-    }
-  }
-  if (!values.length) return 24;
-  const upper = percentile(values, 0.995) + 4;
-  return Math.max(24, Math.ceil(upper));
-}
-
-function toAxisHour(hours) {
-  return Math.max(0, hours);
-}
-
-function getRelativeHoursOrFallback(rec, hourField) {
-  const secs = getRelativeSeconds(rec, hourField);
-  if (Number.isFinite(secs) && secs >= 0) return secs / 3600;
-  return getHourValue(rec, hourField);
-}
-
-function buildHourGrid(maxHours) {
-  const upper = Math.max(24, Math.ceil(maxHours));
-  const out = [];
-  for (let h = 0; h <= upper; h += 1) out.push(h);
-  return out;
-}
-
-function buildEmpiricalCdfSeries(records, hourField, cohortSize, maxHours) {
-  const hours = buildHourGrid(maxHours);
-  const counts = new Int32Array(hours.length);
-
-  for (const rec of records) {
-    const value = getRelativeHoursOrFallback(rec, hourField);
-    if (!validHour(value)) continue;
-    const idx = Math.max(0, Math.min(hours.length - 1, Math.floor(value)));
-    counts[idx] += 1;
+function renderWindowStageChart(records) {
+  if (!records.length) {
+    renderEmpty("window-stage-chart", "No matching orders.");
+    return;
   }
 
-  const y = new Array(hours.length);
-  let running = 0;
-  for (let i = 0; i < hours.length; i += 1) {
-    running += counts[i];
-    y[i] = running / cohortSize;
-  }
-
-  return { x: hours.map(toAxisHour), y };
-}
-
-function filterRecords(filters) {
-  const iTest = state.index.test_code;
-  const iStreet = state.index.order_street;
-  const iDept = state.index.test_performing_dept;
-  const iLoc = state.index.test_performing_location;
-  const iDay = state.index.day_type;
-
-  const out = [];
-  for (const rec of state.records) {
-    if (filters.test_code !== "All" && rec[iTest] !== filters.test_code) continue;
-    if (filters.order_street !== "All" && rec[iStreet] !== filters.order_street) continue;
-    if (filters.test_performing_dept !== "All" && rec[iDept] !== filters.test_performing_dept) continue;
-    if (filters.test_performing_location !== "All" && rec[iLoc] !== filters.test_performing_location) continue;
-    if (filters.day_type !== "All" && rec[iDay] !== filters.day_type) continue;
-    out.push(rec);
-  }
-  return out;
-}
-
-function updateStats(panel, n, cancellationRate) {
-  byId(`${panel}-stats`).textContent = n
-    ? `N = ${fmtInt(n)} | cancellation = ${fmtPercent(cancellationRate)}`
-    : "No records for current filters";
-}
-
-function renderTimeline(panel, records, maxHours) {
-  const target = byId(`${panel}-timeline`);
-  const n = records.length;
-
-  if (!n) {
-    renderEmptyChart(target, "Average Workflow Timeline", "No records for current filters");
-    return { cancellationRate: 0, maxHours: 24 };
-  }
-
-  const traces = [];
-
-  for (const series of TIMELINE_SERIES) {
-    if (series.isCancellation && !state.showCancellation) continue;
-
-    if (series.label === "Ordered") {
-      traces.push({
-        x: [toAxisHour(0), toAxisHour(maxHours)],
-        y: [1, 1],
-        mode: "lines",
-        name: series.label,
-        line: { color: series.color, width: series.width, dash: series.dash },
-        hovertemplate: `${series.label}<br>%{x:.2f}h: %{y:.1%}<extra></extra>`,
-      });
-      continue;
-    }
-
-    const curve = buildEmpiricalCdfSeries(records, series.field, n, maxHours);
-    traces.push({
-      x: curve.x,
-      y: curve.y,
-      mode: "lines",
-      name: series.label,
-      line: { shape: "hv", color: series.color, width: series.width, dash: series.dash || "solid" },
-      hovertemplate: `${series.label}<br>%{x:.2f}h: %{y:.1%}<extra></extra>`,
-    });
-  }
-
-  const cancellationRate = records
-    .map((r) => getRelativeHoursOrFallback(r, "cancellation_h"))
-    .filter(validHour).length / n;
-
-  // Add reference lines for key thresholds
-  const shapes = [
-    { type: "line", x0: 24, x1: 24, y0: 0, y1: 1, line: { color: "#94a3b8", width: 1, dash: "dot" } },
-    { type: "line", x0: 48, x1: 48, y0: 0, y1: 1, line: { color: "#94a3b8", width: 1, dash: "dot" } },
-  ];
-
-  const annotations = [
-    { x: 24, y: 1.01, text: "24h", showarrow: false, font: { size: 10, color: "#64748b" } },
-    { x: 48, y: 1.01, text: "48h", showarrow: false, font: { size: 10, color: "#64748b" } },
-  ];
+  const traces = WINDOW_CONFIGS.map((windowConfig) => ({
+    type: "bar",
+    name: `${windowConfig.title}`,
+    x: STAGES.map((stage) => stage.label),
+    y: STAGES.map((stage) => shareWithin(records, stage.field, windowConfig.hours) * 100),
+    marker: { color: windowConfig.color },
+    text: STAGES.map((stage) => fmtPercent(shareWithin(records, stage.field, windowConfig.hours))),
+    textposition: "outside",
+    cliponaxis: false,
+    hovertemplate: "%{x}<br>%{y:.1f}% of orders<extra>" + windowConfig.title + "</extra>",
+  }));
 
   Plotly.react(
-    target,
+    "window-stage-chart",
     traces,
     {
-      ...MODERN_LAYOUT,
-      title: { 
-        text: "Average Workflow Timeline",
-        x: 0.02,
-        font: { size: 15, weight: 600, color: '#18181b' }
-      },
-      margin: { t: 54, r: 20, b: 60, l: 62 },
-      xaxis: {
-        title: { text: "Hours since order creation", font: { size: 12, color: '#52525b' } },
-        ...buildHourAxis(maxHours),
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        zeroline: false,
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
-      },
+      ...PLOTLY_BASE_LAYOUT,
+      barmode: "group",
       yaxis: {
-        title: { text: "Share of cohort", font: { size: 12, color: '#52525b' } },
-        tickformat: ".0%",
-        range: [0, 1.03],
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        zeroline: false,
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        range: [0, 105],
+        ticksuffix: "%",
+        title: { text: "Share of filtered orders" },
       },
-      shapes,
-      annotations,
-      legend: { 
-        orientation: "h",
-        y: -0.26,
-        x: 0,
-        font: { size: 11 }
+      xaxis: {
+        ...PLOTLY_BASE_LAYOUT.xaxis,
+        tickangle: 0,
       },
     },
     PLOTLY_CONFIG
   );
-
-  return { cancellationRate, maxHours };
 }
 
-function getRecordHours(rec) {
-  return {
-    ordered: 0,
-    collected: getHourValue(rec, "collected_h"),
-    received: getHourValue(rec, "received_h"),
-    firstResult: getHourValue(rec, "first_result_h"),
-    finalVerified: getHourValue(rec, "final_verified_h"),
-    cancellation: getHourValue(rec, "cancellation_h"),
-  };
-}
-
-function buildFlowData(records) {
-  const baseNodes = ["Ordered", "Collected", "Received", "First Result", "Final Verified"];
-  const nodeColors = {
-    Ordered: "#9AA0A6",
-    Collected: "#F58518",
-    Received: "#54A24B",
-    "First Result": "#E45756",
-    "Final Verified": "#1565C0",
-    Cancelled: "#8B949E",
-  };
-
-  const rank = {
-    Ordered: 0,
-    Collected: 1,
-    Received: 2,
-    "First Result": 3,
-    "Final Verified": 4,
-  };
-
-  const edgeCounts = new Map();
-  const addEdge = (source, target, value = 1) => {
-    const key = `${source}>>${target}`;
-    edgeCounts.set(key, (edgeCounts.get(key) || 0) + value);
-  };
-
-  for (const rec of records) {
-    const h = getRecordHours(rec);
-    const path = [{ label: "Ordered", hour: 0 }];
-
-    if (validHour(h.collected)) path.push({ label: "Collected", hour: h.collected });
-    if (validHour(h.received)) path.push({ label: "Received", hour: h.received });
-    if (validHour(h.firstResult)) path.push({ label: "First Result", hour: h.firstResult });
-    if (validHour(h.finalVerified)) path.push({ label: "Final Verified", hour: h.finalVerified });
-
-    path.sort((a, b) => {
-      if (a.hour !== b.hour) return a.hour - b.hour;
-      return rank[a.label] - rank[b.label];
-    });
-
-    const cleanPath = [path[0]];
-    for (let i = 1; i < path.length; i += 1) {
-      if (path[i].label !== cleanPath[cleanPath.length - 1].label) {
-        cleanPath.push(path[i]);
-      }
-    }
-
-    for (let i = 0; i < cleanPath.length - 1; i += 1) {
-      addEdge(cleanPath[i].label, cleanPath[i + 1].label);
-    }
-
-    if (state.showCancellation && validHour(h.cancellation)) {
-      let source = "Ordered";
-      for (const point of cleanPath) {
-        if (point.hour <= h.cancellation + 1e-9) source = point.label;
-      }
-      addEdge(source, "Cancelled");
-    }
-  }
-
-  let nodeLabels = [...baseNodes];
-  const hasCancel = state.showCancellation && [...edgeCounts.keys()].some((k) => k.endsWith(">>Cancelled"));
-  if (hasCancel) nodeLabels.push("Cancelled");
-
-  const nodeIndex = Object.fromEntries(nodeLabels.map((label, idx) => [label, idx]));
-
-  const source = [];
-  const target = [];
-  const value = [];
-  const linkColor = [];
-
-  for (const [key, count] of edgeCounts.entries()) {
-    const [s, t] = key.split(">>");
-    if (!(s in nodeIndex) || !(t in nodeIndex)) continue;
-    if (count <= 0) continue;
-    source.push(nodeIndex[s]);
-    target.push(nodeIndex[t]);
-    value.push(count);
-    linkColor.push(t === "Cancelled" ? "rgba(139,148,158,0.45)" : "rgba(31,41,55,0.18)");
-  }
-
-  if (!value.length) return null;
-
-  return {
-    nodeLabels,
-    nodeColors: nodeLabels.map((label) => nodeColors[label]),
-    source,
-    target,
-    value,
-    linkColor,
-  };
-}
-
-function renderFlowchart(panel, records) {
-  const target = byId(`${panel}-flow`);
-
+function renderCumulativeChart(records) {
   if (!records.length) {
-    renderEmptyChart(target, "Flowchart of Samples Between Stages", "No records for current filters");
+    renderEmpty("cumulative-chart", "No matching orders.");
     return;
   }
 
-  const flow = buildFlowData(records);
-  if (!flow) {
-    renderEmptyChart(target, "Flowchart of Samples Between Stages", "No stage transitions available");
-    return;
-  }
+  const horizon = 72;
+  const hours = Array.from({ length: horizon + 1 }, (_, i) => i);
+  const traces = STAGES.map((stage) => {
+    const bins = new Array(horizon + 1).fill(0);
+    for (const rec of records) {
+      const value = hourAt(rec, stage.field);
+      if (!Number.isFinite(value) || value > horizon) continue;
+      bins[Math.min(horizon, Math.floor(value))] += 1;
+    }
 
-  Plotly.react(
-    target,
-    [
-      {
-        type: "sankey",
-        arrangement: "snap",
-        node: {
-          label: flow.nodeLabels,
-          color: flow.nodeColors,
-          pad: 20,
-          thickness: 18,
-          line: { color: "rgba(0,0,0,0.15)", width: 0.5 },
-        },
-        link: {
-          source: flow.source,
-          target: flow.target,
-          value: flow.value,
-          color: flow.linkColor,
-        },
-      },
-    ],
-    {
-      ...MODERN_LAYOUT,
-      title: { 
-        text: "Flowchart of Samples Between Stages",
-        x: 0.02,
-        font: { size: 15, weight: 600, color: '#18181b' }
-      },
-      margin: { t: 48, r: 24, b: 20, l: 16 },
-    },
-    PLOTLY_CONFIG
-  );
-}
+    const y = [];
+    let running = 0;
+    for (const count of bins) {
+      running += count;
+      y.push((running / records.length) * 100);
+    }
 
-function buildStageCounts(records, maxHours) {
-  const stageLabels = state.showCancellation
-    ? ["Ordered", "Collected", "Received", "First Result", "Final Verified", "Cancelled"]
-    : ["Ordered", "Collected", "Received", "First Result", "Final Verified"];
-
-  const hours = buildHourGrid(maxHours);
-  const binCount = hours.length;
-  const series = Object.fromEntries(stageLabels.map((label) => [label, new Int32Array(binCount)]));
-
-  const addEvent = (label, value) => {
-    if (!validHour(value)) return;
-    const idx = Math.max(0, Math.min(binCount - 1, Math.floor(value)));
-    series[label][idx] += 1;
-  };
-
-  for (const rec of records) {
-    addEvent("Ordered", 0);
-    addEvent("Collected", getRelativeHoursOrFallback(rec, "collected_h"));
-    addEvent("Received", getRelativeHoursOrFallback(rec, "received_h"));
-    addEvent("First Result", getRelativeHoursOrFallback(rec, "first_result_h"));
-    addEvent("Final Verified", getRelativeHoursOrFallback(rec, "final_verified_h"));
-    if (state.showCancellation) addEvent("Cancelled", getRelativeHoursOrFallback(rec, "cancellation_h"));
-  }
-
-  const outSeries = {};
-  for (const label of stageLabels) outSeries[label] = Array.from(series[label]);
-
-  return { x: hours, series: outSeries, stageLabels };
-}
-
-function renderThemeRiver(panel, records, maxHours) {
-  const target = byId(`${panel}-river`);
-
-  if (!records.length) {
-    renderEmptyChart(target, "ThemeRiver by Stage", "No records for current filters");
-    return;
-  }
-
-  const counts = buildStageCounts(records, maxHours);
-  const xHours = counts.x.map(toAxisHour);
-  const totals = counts.x.map((_, idx) => {
-    let sum = 0;
-    for (const label of counts.stageLabels) sum += counts.series[label][idx];
-    return sum;
-  });
-
-  const traces = counts.stageLabels.map((label) => {
-    const def = STAGE_DEFS.find((s) => s.label === label);
-    const rawY = counts.series[label];
-    const propY = rawY.map((v, idx) => (totals[idx] > 0 ? v / totals[idx] : 0));
-    const hoverData = rawY.map((v, idx) => [v, totals[idx]]);
     return {
       type: "scatter",
       mode: "lines",
-      stackgroup: "one",
-      name: label,
-      x: xHours,
-      y: propY,
-      customdata: hoverData,
-      line: { width: 0.7, color: def.color },
-      fillcolor: def.color,
-      hovertemplate: `${label}<br>%{x:.2f}h<br>%{customdata[0]:,} / %{customdata[1]:,} events<br>%{y:.1%}<extra></extra>`,
+      name: stage.label,
+      x: hours,
+      y,
+      line: { color: stage.color, width: 3 },
+      hovertemplate: "%{x}h<br>%{y:.1f}% of orders<extra>" + stage.label + "</extra>",
     };
   });
 
   Plotly.react(
-    target,
+    "cumulative-chart",
     traces,
     {
-      ...MODERN_LAYOUT,
-      title: { 
-        text: "ThemeRiver by Stage (Proportion of Events per Hour)",
-        x: 0.02,
-        font: { size: 15, weight: 600, color: '#18181b' }
-      },
-      margin: { t: 48, r: 22, b: 56, l: 66 },
-      xaxis: {
-        title: { text: "Hours since order creation", font: { size: 12, color: '#52525b' } },
-        ...buildHourAxis(maxHours),
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        zeroline: false,
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
-      },
-      yaxis: {
-        title: { text: "Share of events", font: { size: 12, color: '#52525b' } },
-        tickformat: ".0%",
-        range: [0, 1],
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        zeroline: false,
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
-      },
-      legend: { 
-        orientation: "h",
-        y: -0.30,
-        x: 0,
-        font: { size: 11 }
-      },
-    },
-    PLOTLY_CONFIG
-  );
-}
-
-function buildScatterTraces(records, maxHoursAxis) {
-  const stages = state.showCancellation ? STAGE_DEFS : STAGE_DEFS.filter((s) => s.label !== "Cancelled");
-  const jitterScale = state.scatterJitter;
-  const maxX = toAxisHour(maxHoursAxis);
-
-  const pointsByStage = Object.fromEntries(stages.map((s) => [s.label, { x: [], y: [], text: [], customdata: [] }]));
-
-  for (let recIdx = 0; recIdx < records.length; recIdx += 1) {
-    const rec = records[recIdx];
-
-    for (let stageIdx = 0; stageIdx < stages.length; stageIdx += 1) {
-      const stage = stages[stageIdx];
-      const eventHours = getRelativeHoursOrFallback(rec, stage.field);
-      if (!validHour(eventHours)) continue;
-
-      const seed = (recIdx + 1) * 131 + (stageIdx + 1) * 977;
-      const baseX = toAxisHour(Math.floor(eventHours));
-      const xJitter = (seededUnit(seed + 1) - 0.5) * 0.8 * jitterScale;
-      const jitteredX = Math.max(0, Math.min(maxX, baseX + xJitter));
-      const yJitter = (seededUnit(seed + 2) - 0.5) * 0.6 * jitterScale;
-      const yValue = stage.rank + yJitter;
-
-      pointsByStage[stage.label].x.push(jitteredX);
-      pointsByStage[stage.label].y.push(yValue);
-      pointsByStage[stage.label].text.push(`${stage.label} | sample #${(recIdx + 1).toLocaleString()}`);
-      pointsByStage[stage.label].customdata.push([eventHours, formatDurationLabel(eventHours * 3600)]);
-    }
-  }
-
-  const traces = stages
-    .map((stage) => {
-      const pts = pointsByStage[stage.label];
-      if (!pts.x.length) return null;
-      return {
-        type: "scattergl",
-        mode: "markers",
-        name: stage.label,
-        x: pts.x,
-        y: pts.y,
-        text: pts.text,
-        customdata: pts.customdata,
-        marker: {
-          size: 5,
-          color: stage.color,
-          opacity: 0.45,
+      ...PLOTLY_BASE_LAYOUT,
+      shapes: [
+        {
+          type: "rect",
+          xref: "x",
+          yref: "paper",
+          x0: 0,
+          x1: 6,
+          y0: 0,
+          y1: 1,
+          fillcolor: "rgba(216, 95, 65, 0.10)",
           line: { width: 0 },
+          layer: "below",
         },
-        hovertemplate: `%{text}<br>%{customdata[0]:.2f}h (%{customdata[1]})<extra></extra>`,
-      };
-    })
-    .filter(Boolean);
-
-  return {
-    traces,
-    tickvals: stages.map((s) => s.rank),
-    ticktext: stages.map((s) => s.label),
-  };
-}
-
-function renderStateScatter(panel, records, maxHoursAxis) {
-  const target = byId(`${panel}-scatter`);
-
-  if (!records.length) {
-    renderEmptyChart(target, "State Scatterplot", "No records for current filters");
-    return;
-  }
-
-  const scatter = buildScatterTraces(records, maxHoursAxis);
-  if (!scatter.traces.length) {
-    renderEmptyChart(target, "State Scatterplot", "No point events available");
-    return;
-  }
-
-  Plotly.react(
-    target,
-    scatter.traces,
-    {
-      ...MODERN_LAYOUT,
-      title: { 
-        text: "Sample-Level Event Scatterplot",
-        x: 0.02,
-        font: { size: 15, weight: 600, color: '#18181b' }
-      },
-      margin: { t: 48, r: 20, b: 68, l: 94 },
+        {
+          type: "rect",
+          xref: "x",
+          yref: "paper",
+          x0: 6,
+          x1: 72,
+          y0: 0,
+          y1: 1,
+          fillcolor: "rgba(15, 118, 110, 0.08)",
+          line: { width: 0 },
+          layer: "below",
+        },
+      ],
+      annotations: [
+        {
+          x: 3,
+          y: 1.08,
+          xref: "x",
+          yref: "paper",
+          showarrow: false,
+          text: "6-hour window",
+          font: { color: "#d85f41", size: 12 },
+        },
+        {
+          x: 39,
+          y: 1.08,
+          xref: "x",
+          yref: "paper",
+          showarrow: false,
+          text: "72-hour window",
+          font: { color: "#0f766e", size: 12 },
+        },
+      ],
       xaxis: {
-        title: { text: "Hours since order creation", font: { size: 12, color: '#52525b' } },
-        ...buildHourAxis(maxHoursAxis),
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        zeroline: false,
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
+        ...PLOTLY_BASE_LAYOUT.xaxis,
+        range: [0, 72],
+        tickmode: "array",
+        tickvals: [0, 6, 12, 24, 36, 48, 60, 72],
+        ticksuffix: "h",
+        title: { text: "Elapsed hours from order" },
       },
       yaxis: {
-        title: { text: "State of specimen", font: { size: 12, color: '#52525b' } },
-        tickmode: "array",
-        tickvals: scatter.tickvals,
-        ticktext: scatter.ticktext,
-        range: [
-          Math.min(...scatter.tickvals) - 0.7,
-          Math.max(...scatter.tickvals) + 0.7,
-        ],
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        zeroline: false,
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
-      },
-      legend: { 
-        orientation: "h",
-        y: -0.28,
-        x: 0,
-        font: { size: 11 }
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        range: [0, 100],
+        ticksuffix: "%",
+        title: { text: "Cumulative share of filtered orders" },
       },
     },
     PLOTLY_CONFIG
   );
 }
 
-function computeTimeCategories(records) {
-  const categories = { express: 0, sameDay: 0, multiDay: 0, delayed: 0 };
-  
-  for (const rec of records) {
-    const finalHours = getRelativeHoursOrFallback(rec, "final_verified_h");
-    if (!validHour(finalHours)) continue;
-    
-    if (finalHours < 6) categories.express++;
-    else if (finalHours < 24) categories.sameDay++;
-    else if (finalHours < 72) categories.multiDay++;
-    else categories.delayed++;
+function renderDepartmentHeatmap(records, targetId, windowConfig) {
+  const groups = topGroups(records, "test_performing_dept", 10);
+  if (!groups.length) {
+    renderEmpty(targetId, "No matching orders.");
+    return;
   }
-  
-  return categories;
-}
 
-function renderTimeBreakdown(panel, records) {
-  const target = byId(`${panel}-breakdown`);
-  
-  if (!records.length) {
-    renderEmptyChart(target, "Time to Completion Breakdown", "No records for current filters");
-    return;
+  const yLabels = groups.map(([name, count]) => `${name} (${fmtInt(count)})`);
+  const z = [];
+  const text = [];
+
+  for (const [groupName] of groups) {
+    const groupRecords = records.filter((rec) => valueAt(rec, "test_performing_dept") === groupName);
+    z.push(STAGES.map((stage) => shareWithin(groupRecords, stage.field, windowConfig.hours) * 100));
+    text.push(STAGES.map((stage) => fmtPercent(shareWithin(groupRecords, stage.field, windowConfig.hours))));
   }
-  
-  const categories = computeTimeCategories(records);
-  const total = categories.express + categories.sameDay + categories.multiDay + categories.delayed;
-  
-  if (total === 0) {
-    renderEmptyChart(target, "Time to Completion Breakdown", "No completed specimens in this cohort");
-    return;
-  }
-  
-  const data = [
-    { label: "⚡ Express (<6h)", value: categories.express, color: "#059669" },
-    { label: "✓ Same-Day (6-24h)", value: categories.sameDay, color: "#10b981" },
-    { label: "📦 Multi-Day (1-3d)", value: categories.multiDay, color: "#f59e0b" },
-    { label: "⚠️ Delayed (>3d)", value: categories.delayed, color: "#dc2626" },
-  ];
-  
+
   Plotly.react(
-    target,
+    targetId,
     [
       {
-        type: "bar",
-        x: data.map(d => d.label),
-        y: data.map(d => (d.value / total) * 100),
-        text: data.map(d => `${d.value} (${((d.value / total) * 100).toFixed(1)}%)`),
-        textposition: "auto",
-        textfont: { size: 11, color: '#18181b', weight: 600 },
-        marker: { 
-          color: data.map(d => d.color),
-          line: { width: 0 }
-        },
-        hovertemplate: "%{x}<br>%{text}<extra></extra>",
+        type: "heatmap",
+        x: STAGES.map((stage) => stage.label),
+        y: yLabels,
+        z,
+        text,
+        texttemplate: "%{text}",
+        hovertemplate: "%{y}<br>%{x}<br>%{z:.1f}% within " + windowConfig.title + "<extra></extra>",
+        colorscale: [
+          [0, "#f7faf8"],
+          [0.45, "#d9e8dc"],
+          [0.75, "#84b89d"],
+          [1, "#2f6f45"],
+        ],
+        zmin: 0,
+        zmax: 100,
+        showscale: false,
       },
     ],
     {
-      ...MODERN_LAYOUT,
-      title: { 
-        text: "Time to Completion Breakdown",
-        x: 0.02,
-        font: { size: 15, weight: 600, color: '#18181b' }
-      },
-      margin: { t: 48, r: 20, b: 86, l: 62 },
+      ...PLOTLY_BASE_LAYOUT,
+      margin: { t: 14, r: 12, b: 52, l: 128 },
       xaxis: {
-        tickangle: -18,
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
+        ...PLOTLY_BASE_LAYOUT.xaxis,
+        tickangle: 0,
       },
       yaxis: {
-        title: { text: "Percentage of cohort", font: { size: 12, color: '#52525b' } },
-        ticksuffix: "%",
-        gridcolor: "rgba(228, 228, 231, 0.5)",
-        zeroline: false,
-        linecolor: 'rgba(228, 228, 231, 0.8)',
-        linewidth: 1,
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        automargin: true,
       },
-      showlegend: false,
     },
     PLOTLY_CONFIG
   );
 }
 
-function generateInsights(records) {
-  if (!records.length) return [];
-  
-  const insights = [];
-  const n = records.length;
-  
-  // Insight 1: Median completion time
-  const completionTimes = records
-    .map(r => getRelativeHoursOrFallback(r, "final_verified_h"))
-    .filter(validHour);
-  
-  if (completionTimes.length > 0) {
-    const median = percentile(completionTimes, 0.5);
-    const medianLabel = formatDurationLabel(median * 3600);
-    insights.push({
-      icon: "⏱️",
-      value: medianLabel,
-      label: "Median Completion Time",
-      description: `Half of specimens complete within ${medianLabel}`,
-      type: median < 24 ? "positive" : median < 72 ? "normal" : "warning",
-    });
-  }
-  
-  // Insight 2: Same-day completion rate
-  const categories = computeTimeCategories(records);
-  const sameDayCount = categories.express + categories.sameDay;
-  const sameDayRate = (sameDayCount / n) * 100;
-  insights.push({
-    icon: "✓",
-    value: `${sameDayRate.toFixed(0)}%`,
-    label: "Same-Day Completion",
-    description: `${fmtInt(sameDayCount)} of ${fmtInt(n)} specimens`,
-    type: sameDayRate > 60 ? "positive" : sameDayRate > 40 ? "normal" : "warning",
-  });
-  
-  // Insight 3: Cancellation rate
-  const cancellations = records
-    .map(r => getRelativeHoursOrFallback(r, "cancellation_h"))
-    .filter(validHour).length;
-  const cancelRate = (cancellations / n) * 100;
-  insights.push({
-    icon: "🚫",
-    value: `${cancelRate.toFixed(1)}%`,
-    label: "Cancellation Rate",
-    description: `${fmtInt(cancellations)} specimens cancelled`,
-    type: cancelRate < 5 ? "positive" : cancelRate < 10 ? "warning" : "alert",
-  });
-  
-  // Insight 4: Primary bottleneck
-  const collectedTimes = records.map(r => getRelativeHoursOrFallback(r, "collected_h")).filter(validHour);
-  const receivedTimes = records.map(r => getRelativeHoursOrFallback(r, "received_h")).filter(validHour);
-  const resultTimes = records.map(r => getRelativeHoursOrFallback(r, "first_result_h")).filter(validHour);
-  
-  const medianCollected = collectedTimes.length ? percentile(collectedTimes, 0.5) : 0;
-  const medianReceived = receivedTimes.length ? percentile(receivedTimes, 0.5) : 0;
-  const medianResult = resultTimes.length ? percentile(resultTimes, 0.5) : 0;
-  
-  const gap1 = medianCollected;
-  const gap2 = medianReceived - medianCollected;
-  const gap3 = medianResult - medianReceived;
-  
-  let bottleneck = "Collection";
-  let bottleneckTime = gap1;
-  if (gap2 > bottleneckTime) { bottleneck = "Transport"; bottleneckTime = gap2; }
-  if (gap3 > bottleneckTime) { bottleneck = "Analysis"; bottleneckTime = gap3; }
-  
-  insights.push({
-    icon: "🔍",
-    value: bottleneck,
-    label: "Primary Bottleneck",
-    description: `~${formatDurationLabel(bottleneckTime * 3600)} average delay`,
-    type: "normal",
-  });
-  
-  return insights;
-}
-
-function renderInsights() {
-  const container = byId("insights-container");
-  const grid = byId("insights-grid");
-  
-  const leftRecords = filterRecords(state.panels.left);
-  
-  if (!leftRecords.length) {
-    container.hidden = true;
+function renderTestCodeChart(records) {
+  const groups = topGroups(records, "test_code", 12);
+  if (!groups.length) {
+    renderEmpty("test-code-chart", "No matching orders.");
     return;
   }
-  
-  const insights = generateInsights(leftRecords);
-  
-  grid.innerHTML = "";
-  for (const insight of insights) {
-    const card = document.createElement("div");
-    card.className = `insight-card ${insight.type}`;
-    card.innerHTML = `
-      <span class="insight-icon">${insight.icon}</span>
-      <span class="insight-label">${insight.label}</span>
-      <span class="insight-value">${insight.value}</span>
-      <span class="insight-description">${insight.description}</span>
-    `;
-    grid.appendChild(card);
-  }
-  
-  container.hidden = false;
-}
 
-function updateChartCaptions(panel, records, maxHours) {
-  const n = records.length;
-  
-  if (!n) {
-    byId(`${panel}-timeline-caption`).textContent = "";
-    byId(`${panel}-breakdown-caption`).textContent = "";
-    byId(`${panel}-flow-caption`).textContent = "";
-    byId(`${panel}-river-caption`).textContent = "";
-    byId(`${panel}-scatter-caption`).textContent = "";
-    return;
-  }
-  
-  // Timeline caption
-  const completionTimes = records.map(r => getRelativeHoursOrFallback(r, "final_verified_h")).filter(validHour);
-  const p50 = completionTimes.length ? percentile(completionTimes, 0.5) : null;
-  const p90 = completionTimes.length ? percentile(completionTimes, 0.9) : null;
-  
-  if (p50 && p90) {
-    byId(`${panel}-timeline-caption`).innerHTML = 
-      `This timeline shows <strong>when specimens reach each stage</strong>. ` +
-      `In this cohort, <em>50% complete within ${formatDurationLabel(p50 * 3600)}</em> and ` +
-      `90% complete within ${formatDurationLabel(p90 * 3600)}.`;
-  }
-  
-  // Breakdown caption
-  const categories = computeTimeCategories(records);
-  const total = categories.express + categories.sameDay + categories.multiDay + categories.delayed;
-  const fastPct = total > 0 ? ((categories.express + categories.sameDay) / total * 100).toFixed(0) : 0;
-  
-  byId(`${panel}-breakdown-caption`).innerHTML = 
-    `<strong>${fastPct}% of specimens</strong> are completed within 24 hours, with ` +
-    `${categories.express} ultra-fast (<6h) specimens leading the way.`;
-  
-  // Flow caption
-  const h = records.map(r => getRecordHours(r));
-  const completeFlow = h.filter(hrs => 
-    validHour(hrs.collected) && validHour(hrs.received) && 
-    validHour(hrs.firstResult) && validHour(hrs.finalVerified)
-  ).length;
-  const completePct = ((completeFlow / n) * 100).toFixed(0);
-  
-  byId(`${panel}-flow-caption`).innerHTML = 
-    `This Sankey diagram shows <strong>specimen movement between stages</strong>. ` +
-    `${completePct}% of specimens follow the complete workflow path without interruption.`;
-  
-  // River caption
-  byId(`${panel}-river-caption`).innerHTML = 
-    `The ThemeRiver visualization reveals <strong>when different events occur over time</strong>. ` +
-    `Wider sections indicate more activity at that stage during specific timeframes.`;
-  
-  // Scatter caption
-  byId(`${panel}-scatter-caption`).innerHTML = 
-    `Each dot represents <strong>an individual specimen's event</strong>. ` +
-    `Vertical clustering shows common timing patterns, while outliers reveal exceptional cases. ` +
-    `Adjust the jitter slider above to separate overlapping points.`;
-}
+  const y = groups.map(([code, count]) => `${code} (${fmtInt(count)})`).reverse();
+  const categories = [
+    {
+      name: "0-6h",
+      color: "#d85f41",
+      getShare(hours) {
+        return Number.isFinite(hours) && hours <= 6;
+      },
+    },
+    {
+      name: "6-72h",
+      color: "#0f766e",
+      getShare(hours) {
+        return Number.isFinite(hours) && hours > 6 && hours <= 72;
+      },
+    },
+    {
+      name: "Outside 72h or open",
+      color: "#9aa4ac",
+      getShare(hours) {
+        return !Number.isFinite(hours) || hours > 72;
+      },
+    },
+  ];
 
-function renderPanel(panel) {
-  const filtered = filterRecords(state.panels[panel]);
-  const n = filtered.length;
-  const maxHours = computeMaxHours(filtered);
-
-  const { cancellationRate } = renderTimeline(panel, filtered, maxHours);
-  renderTimeBreakdown(panel, filtered);
-  renderFlowchart(panel, filtered);
-  renderThemeRiver(panel, filtered, maxHours);
-  renderStateScatter(panel, filtered, maxHours);
-  updateChartCaptions(panel, filtered, maxHours);
-
-  updateStats(panel, n, cancellationRate);
-}
-
-function renderAll() {
-  renderInsights();
-  renderPanel("left");
-  if (state.showComparison) renderPanel("right");
-}
-
-function populateSelect(panel, field, options) {
-  const select = byId(`${panel}-filter-${field}`);
-  const all = ["All", ...options];
-
-  select.innerHTML = "";
-  for (const value of all) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = value;
-    select.append(option);
-  }
-
-  select.value = state.panels[panel][field] || "All";
-}
-
-function populateControls() {
-  for (const panel of ["left", "right"]) {
-    for (const field of DIMENSIONS) {
-      populateSelect(panel, field, state.dataset.dimensions[field] || []);
+  const traces = categories.map((category) => {
+    const x = [];
+    const text = [];
+    for (let i = groups.length - 1; i >= 0; i -= 1) {
+      const [code] = groups[i];
+      const groupRecords = records.filter((rec) => valueAt(rec, "test_code") === code);
+      const count = groupRecords.filter((rec) => category.getShare(hourAt(rec, "final_verified_h"))).length;
+      const share = groupRecords.length ? (count / groupRecords.length) * 100 : 0;
+      x.push(share);
+      text.push(`${share.toFixed(1)}%`);
     }
-  }
+
+    return {
+      type: "bar",
+      orientation: "h",
+      name: category.name,
+      y,
+      x,
+      marker: { color: category.color },
+      text,
+      textposition: "inside",
+      insidetextanchor: "middle",
+      hovertemplate: "%{y}<br>%{x:.1f}%<extra>" + category.name + "</extra>",
+    };
+  });
+
+  Plotly.react(
+    "test-code-chart",
+    traces,
+    {
+      ...PLOTLY_BASE_LAYOUT,
+      barmode: "stack",
+      margin: { t: 14, r: 20, b: 44, l: 106 },
+      xaxis: {
+        ...PLOTLY_BASE_LAYOUT.xaxis,
+        range: [0, 100],
+        ticksuffix: "%",
+        title: { text: "Share of each test code" },
+      },
+      yaxis: {
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        automargin: true,
+      },
+    },
+    PLOTLY_CONFIG
+  );
 }
 
-function readFiltersFromUI(panel) {
-  const next = {};
+function renderStreetChart(records) {
+  const groups = topGroups(records, "order_street", 10);
+  if (!groups.length) {
+    renderEmpty("street-chart", "No matching orders.");
+    return;
+  }
+
+  const ordered = [...groups]
+    .map(([street, count]) => {
+      const groupRecords = records.filter((rec) => valueAt(rec, "order_street") === street);
+      return {
+        label: `${street} (${fmtInt(count)})`,
+        share72: shareWithin(groupRecords, "final_verified_h", 72) * 100,
+        share6: shareWithin(groupRecords, "final_verified_h", 6) * 100,
+      };
+    })
+    .sort((a, b) => b.share72 - a.share72);
+
+  Plotly.react(
+    "street-chart",
+    [
+      {
+        type: "bar",
+        orientation: "h",
+        name: "72-hour verified",
+        y: ordered.map((item) => item.label),
+        x: ordered.map((item) => item.share72),
+        marker: { color: "#0f766e" },
+        text: ordered.map((item) => `${item.share72.toFixed(1)}%`),
+        textposition: "outside",
+        cliponaxis: false,
+        hovertemplate: "%{y}<br>%{x:.1f}%<extra>72-hour verified</extra>",
+      },
+      {
+        type: "scatter",
+        mode: "markers",
+        name: "6-hour verified",
+        y: ordered.map((item) => item.label),
+        x: ordered.map((item) => item.share6),
+        marker: {
+          color: "#d85f41",
+          size: 11,
+          symbol: "diamond",
+        },
+        hovertemplate: "%{y}<br>%{x:.1f}%<extra>6-hour verified</extra>",
+      },
+    ],
+    {
+      ...PLOTLY_BASE_LAYOUT,
+      margin: { t: 14, r: 32, b: 44, l: 122 },
+      xaxis: {
+        ...PLOTLY_BASE_LAYOUT.xaxis,
+        range: [0, 100],
+        ticksuffix: "%",
+        title: { text: "Share of filtered orders" },
+      },
+      yaxis: {
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        automargin: true,
+      },
+    },
+    PLOTLY_CONFIG
+  );
+}
+
+function updateDatasetNote() {
+  const generatedAt = state.dataset.generated_at_utc ? new Date(state.dataset.generated_at_utc) : null;
+  const windows = state.dataset.focus_windows_hours || WINDOW_CONFIGS.map((config) => config.hours);
+  const generatedLabel = generatedAt && !Number.isNaN(generatedAt.valueOf()) ? generatedAt.toLocaleString() : "unknown";
+  byId("dataset-note").textContent =
+    `Built from ${fmtInt(state.records.length)} order-test records. Window rules: ${windows.join("h and ")}h. Dataset generated ${generatedLabel}.`;
+}
+
+function populateFilters() {
   for (const field of DIMENSIONS) {
-    next[field] = byId(`${panel}-filter-${field}`).value;
+    const select = byId(`filter-${field}`);
+    const values = state.dataset.dimensions?.[field] || [];
+    const options = ["All", ...values];
+    select.innerHTML = options
+      .map((value) => `<option value="${value}">${value}</option>`)
+      .join("");
+    select.value = state.filters[field];
   }
-  state.panels[panel] = next;
 }
 
-function setComparisonEnabled(enabled) {
-  state.showComparison = enabled;
-  byId("panel-right").hidden = !enabled;
-  byId("panel-grid").classList.toggle("compare", enabled);
-  byId("comparison-btn").textContent = enabled ? "Close Comparison" : "Comparison";
-}
-
-function wireEvents() {
-  document.querySelectorAll("select[data-panel][data-field]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const panel = select.dataset.panel;
-      readFiltersFromUI(panel);
-      renderPanel(panel);
+function bindControls() {
+  for (const field of DIMENSIONS) {
+    byId(`filter-${field}`).addEventListener("change", (event) => {
+      state.filters[field] = event.target.value;
+      render();
     });
+  }
+
+  byId("reset-filters").addEventListener("click", () => {
+    state.filters = { ...EMPTY_FILTERS };
+    populateFilters();
+    render();
   });
-
-  byId("comparison-btn").addEventListener("click", () => {
-    if (!state.showComparison) {
-      state.panels.right = { ...state.panels.left };
-      for (const field of DIMENSIONS) {
-        byId(`right-filter-${field}`).value = state.panels.right[field];
-      }
-      setComparisonEnabled(true);
-      renderPanel("right");
-      return;
-    }
-
-    setComparisonEnabled(false);
-  });
-
-  byId("toggle-cancellation").addEventListener("change", (event) => {
-    state.showCancellation = event.target.checked;
-    renderAll();
-  });
-
-  const jitterSlider = byId("jitter-slider");
-  const jitterValue = byId("jitter-value");
-  const syncJitterLabel = () => {
-    jitterValue.textContent = `${state.scatterJitter.toFixed(2)}x`;
-  };
-
-  jitterSlider.addEventListener("input", (event) => {
-    state.scatterJitter = Number(event.target.value);
-    syncJitterLabel();
-    renderAll();
-  });
-  syncJitterLabel();
 }
 
-async function loadDataset() {
-  const response = await fetch("./data/orders_compact.json", { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`Failed to load data (${response.status})`);
+function render() {
+  const records = filterRecords();
+  if (!records.length) {
+    setStatus("No orders match the current filters.");
+    fillSummaryStrip(records);
+    fillWindowMetrics(records);
+    renderEmpty("window-stage-chart", "No matching orders.");
+    renderEmpty("test-code-chart", "No matching orders.");
+    renderEmpty("cumulative-chart", "No matching orders.");
+    renderEmpty("heatmap-6-chart", "No matching orders.");
+    renderEmpty("heatmap-72-chart", "No matching orders.");
+    renderEmpty("street-chart", "No matching orders.");
+    return;
   }
-  return response.json();
+
+  const final72 = countWithin(records, "final_verified_h", 72);
+  setStatus(`${fmtInt(records.length)} orders match the filters. ${fmtPercent(final72 / records.length)} are verified within 72 hours.`);
+
+  fillSummaryStrip(records);
+  fillWindowMetrics(records);
+  renderWindowStageChart(records);
+  renderTestCodeChart(records);
+  renderCumulativeChart(records);
+  renderDepartmentHeatmap(records, "heatmap-6-chart", WINDOW_CONFIGS[0]);
+  renderDepartmentHeatmap(records, "heatmap-72-chart", WINDOW_CONFIGS[1]);
+  renderStreetChart(records);
 }
 
 async function init() {
   try {
-    const dataset = await loadDataset();
-    state.dataset = dataset;
-    state.records = dataset.records || [];
-
-    const fields = dataset.fields || [];
-    const requiredFields = [
-      "test_code",
-      "order_street",
-      "test_performing_dept",
-      "test_performing_location",
-      "day_type",
-      "collected_h",
-      "received_h",
-      "first_result_h",
-      "final_verified_h",
-      "cancellation_h",
-    ];
-
-    for (const field of fields) {
-      state.index[field] = fields.indexOf(field);
+    const response = await fetch("./data/orders_compact.json");
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
 
-    const missing = requiredFields.filter((f) => !(f in state.index));
-    if (missing.length) {
-      throw new Error(`Dataset missing required fields: ${missing.join(", ")}`);
-    }
+    state.dataset = await response.json();
+    state.records = state.dataset.records || [];
+    state.index = Object.fromEntries((state.dataset.fields || []).map((field, index) => [field, index]));
 
-    populateControls();
-    wireEvents();
-    setComparisonEnabled(false);
-
-    status(
-      `Loaded ${fmtInt(state.records.length)} order-test records from ${dataset.source_zip}. Use filters and optional Comparison mode.`
-    );
-
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    renderAll();
+    updateDatasetNote();
+    populateFilters();
+    bindControls();
+    render();
   } catch (error) {
+    setStatus("Failed to load dashboard data.", true);
+    byId("dataset-note").textContent = "The dashboard data could not be loaded.";
     console.error(error);
-    status(`Failed to initialize dashboard: ${error.message}`, true);
+    renderEmpty("window-stage-chart", "Dashboard data failed to load.");
+    renderEmpty("test-code-chart", "Dashboard data failed to load.");
+    renderEmpty("cumulative-chart", "Dashboard data failed to load.");
+    renderEmpty("heatmap-6-chart", "Dashboard data failed to load.");
+    renderEmpty("heatmap-72-chart", "Dashboard data failed to load.");
+    renderEmpty("street-chart", "Dashboard data failed to load.");
   }
 }
 
-init();
+window.addEventListener("DOMContentLoaded", init);

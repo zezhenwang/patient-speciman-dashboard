@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Specimen Workflow Dashboard</title>
+    <title>Specimen Window Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -12,133 +12,148 @@
     <script defer src="./app.js"></script>
   </head>
   <body>
-    <main class="page">
-      <header class="topbar">
-        <div>
-          <h1>Specimen Journey Dashboard</h1>
-          <p>Interactive workflow timelines with optional A/B cohort comparison.</p>
+    <main class="dashboard-shell">
+      <section class="masthead">
+        <div class="section-inner masthead-layout">
+          <div class="masthead-copy">
+            <p class="eyebrow">Specimen delivery windows</p>
+            <h1>First 6 hours and first 72 hours</h1>
+            <p class="lede">
+              Every view on this page measures how far a specimen order moves inside the same-day 6-hour window
+              and the 72-hour three-day window.
+            </p>
+            <p class="data-note" id="dataset-note">Loading dataset details...</p>
+          </div>
+          <div class="masthead-summary" id="summary-strip" aria-live="polite"></div>
         </div>
-        <div class="global-controls">
-          <button id="comparison-btn" type="button">Comparison</button>
-          <label class="toggle">
-            <input id="toggle-cancellation" type="checkbox" checked />
-            <span>Show likeliness of cancellation</span>
-          </label>
-          <label class="jitter-control" for="jitter-slider">
-            <span>Point Jitter</span>
-            <input id="jitter-slider" type="range" min="0" max="2" step="0.05" value="0" />
-            <strong id="jitter-value">0.00x</strong>
-          </label>
-        </div>
-      </header>
-
-      <section id="status" class="status">Loading data...</section>
-
-      <section id="insights-container" class="insights-container" hidden>
-        <h2 class="insights-title">📊 Key Findings</h2>
-        <div id="insights-grid" class="insights-grid"></div>
       </section>
 
-      <section id="panel-grid" class="panel-grid">
-        <article class="panel" id="panel-left">
-          <div class="panel-head">
-            <h2>Primary Cohort</h2>
-            <div class="panel-stats" id="left-stats"></div>
+      <section class="control-band">
+        <div class="section-inner">
+          <div class="section-heading">
+            <div>
+              <p class="kicker">Scope</p>
+              <h2>Filter the order cohort</h2>
+            </div>
+            <div id="status" class="status">Loading data...</div>
           </div>
 
-          <div class="filters">
-            <label>Test Code
-              <select id="left-filter-test_code" data-panel="left" data-field="test_code"></select>
+          <div class="filters-grid">
+            <label>
+              <span>Test code</span>
+              <select id="filter-test_code" data-field="test_code"></select>
             </label>
-            <label>Street
-              <select id="left-filter-order_street" data-panel="left" data-field="order_street"></select>
+            <label>
+              <span>Ordering street</span>
+              <select id="filter-order_street" data-field="order_street"></select>
             </label>
-            <label>Performing Dept
-              <select id="left-filter-test_performing_dept" data-panel="left" data-field="test_performing_dept"></select>
+            <label>
+              <span>Performing department</span>
+              <select id="filter-test_performing_dept" data-field="test_performing_dept"></select>
             </label>
-            <label>Performing Location
-              <select id="left-filter-test_performing_location" data-panel="left" data-field="test_performing_location"></select>
+            <label>
+              <span>Performing location</span>
+              <select id="filter-test_performing_location" data-field="test_performing_location"></select>
             </label>
-            <label>Order Day Type
-              <select id="left-filter-day_type" data-panel="left" data-field="day_type"></select>
+            <label>
+              <span>Day type</span>
+              <select id="filter-day_type" data-field="day_type"></select>
             </label>
+            <button id="reset-filters" class="reset-button" type="button">Reset filters</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="window-band">
+        <div class="section-inner">
+          <div class="section-heading">
+            <div>
+              <p class="kicker">Windows</p>
+              <h2>Two delivery checkpoints</h2>
+            </div>
           </div>
 
-          <div class="chart-wrapper">
-            <div class="chart timeline" id="left-timeline"></div>
-            <p class="chart-caption" id="left-timeline-caption"></p>
+          <div class="window-grid">
+            <article class="window-panel six-hour">
+              <div class="window-header">
+                <p class="window-label">6 hours</p>
+                <h3>Same-day delivery</h3>
+                <p>Orders that clear the workflow inside the current day.</p>
+              </div>
+              <div class="window-metrics" id="window-6-metrics"></div>
+            </article>
+
+            <article class="window-panel seventy-two-hour">
+              <div class="window-header">
+                <p class="window-label">72 hours</p>
+                <h3>Three-day delivery</h3>
+                <p>Orders that finish within the standard three-day window.</p>
+              </div>
+              <div class="window-metrics" id="window-72-metrics"></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="chart-band">
+        <div class="section-inner">
+          <div class="section-heading">
+            <div>
+              <p class="kicker">Visuals</p>
+              <h2>Window-focused views</h2>
+            </div>
           </div>
 
-          <div class="chart-wrapper">
-            <div class="chart breakdown" id="left-breakdown"></div>
-            <p class="chart-caption" id="left-breakdown-caption"></p>
-          </div>
+          <div class="chart-grid">
+            <article class="chart-panel chart-panel-wide">
+              <div class="chart-header">
+                <h3>Milestone completion inside each window</h3>
+                <p>Share of the filtered cohort reaching each stage by 6 hours and by 72 hours.</p>
+              </div>
+              <div class="chart-frame" id="window-stage-chart"></div>
+            </article>
 
-          <div class="chart-wrapper">
-            <div class="chart flow" id="left-flow"></div>
-            <p class="chart-caption" id="left-flow-caption"></p>
-          </div>
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h3>Top test codes by delivery mix</h3>
+                <p>How the busiest test codes split between 0-6 hours, 6-72 hours, and outside the focus window.</p>
+              </div>
+              <div class="chart-frame" id="test-code-chart"></div>
+            </article>
 
-          <div class="chart-wrapper">
-            <div class="chart river" id="left-river"></div>
-            <p class="chart-caption" id="left-river-caption"></p>
-          </div>
+            <article class="chart-panel chart-panel-wide">
+              <div class="chart-header">
+                <h3>Cumulative progress through the first 72 hours</h3>
+                <p>The stage curves stop at 72 hours so late outliers do not dominate the picture.</p>
+              </div>
+              <div class="chart-frame" id="cumulative-chart"></div>
+            </article>
 
-          <div class="chart-wrapper">
-            <div class="chart scatter" id="left-scatter"></div>
-            <p class="chart-caption" id="left-scatter-caption"></p>
-          </div>
-        </article>
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h3>6-hour attainment by department</h3>
+                <p>Top performing departments by order volume, scored on milestone completion within 6 hours.</p>
+              </div>
+              <div class="chart-frame" id="heatmap-6-chart"></div>
+            </article>
 
-        <article class="panel" id="panel-right" hidden>
-          <div class="panel-head">
-            <h2>Comparison Cohort</h2>
-            <div class="panel-stats" id="right-stats"></div>
-          </div>
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h3>72-hour attainment by department</h3>
+                <p>Top performing departments by order volume, scored on milestone completion within 72 hours.</p>
+              </div>
+              <div class="chart-frame" id="heatmap-72-chart"></div>
+            </article>
 
-          <div class="filters">
-            <label>Test Code
-              <select id="right-filter-test_code" data-panel="right" data-field="test_code"></select>
-            </label>
-            <label>Street
-              <select id="right-filter-order_street" data-panel="right" data-field="order_street"></select>
-            </label>
-            <label>Performing Dept
-              <select id="right-filter-test_performing_dept" data-panel="right" data-field="test_performing_dept"></select>
-            </label>
-            <label>Performing Location
-              <select id="right-filter-test_performing_location" data-panel="right" data-field="test_performing_location"></select>
-            </label>
-            <label>Order Day Type
-              <select id="right-filter-day_type" data-panel="right" data-field="day_type"></select>
-            </label>
+            <article class="chart-panel chart-panel-wide">
+              <div class="chart-header">
+                <h3>Ordering streets against the 72-hour target</h3>
+                <p>The highest-volume ordering streets ranked by how many orders are fully verified within 72 hours.</p>
+              </div>
+              <div class="chart-frame" id="street-chart"></div>
+            </article>
           </div>
-
-          <div class="chart-wrapper">
-            <div class="chart timeline" id="right-timeline"></div>
-            <p class="chart-caption" id="right-timeline-caption"></p>
-          </div>
-
-          <div class="chart-wrapper">
-            <div class="chart breakdown" id="right-breakdown"></div>
-            <p class="chart-caption" id="right-breakdown-caption"></p>
-          </div>
-
-          <div class="chart-wrapper">
-            <div class="chart flow" id="right-flow"></div>
-            <p class="chart-caption" id="right-flow-caption"></p>
-          </div>
-
-          <div class="chart-wrapper">
-            <div class="chart river" id="right-river"></div>
-            <p class="chart-caption" id="right-river-caption"></p>
-          </div>
-
-          <div class="chart-wrapper">
-            <div class="chart scatter" id="right-scatter"></div>
-            <p class="chart-caption" id="right-scatter-caption"></p>
-          </div>
-        </article>
+        </div>
       </section>
     </main>
   </body>
