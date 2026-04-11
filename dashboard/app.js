@@ -292,6 +292,17 @@ function renderTimeline(panel, records, maxHours) {
     .map((r) => getRelativeHoursOrFallback(r, "cancellation_h"))
     .filter(validHour).length / n;
 
+  // Add reference lines for key thresholds
+  const shapes = [
+    { type: "line", x0: 24, x1: 24, y0: 0, y1: 1, line: { color: "#94a3b8", width: 1, dash: "dot" } },
+    { type: "line", x0: 48, x1: 48, y0: 0, y1: 1, line: { color: "#94a3b8", width: 1, dash: "dot" } },
+  ];
+
+  const annotations = [
+    { x: 24, y: 1.01, text: "24h", showarrow: false, font: { size: 10, color: "#64748b" } },
+    { x: 48, y: 1.01, text: "48h", showarrow: false, font: { size: 10, color: "#64748b" } },
+  ];
+
   Plotly.react(
     target,
     traces,
@@ -313,6 +324,8 @@ function renderTimeline(panel, records, maxHours) {
         gridcolor: "#edf2f7",
         zeroline: false,
       },
+      shapes,
+      annotations,
       legend: { orientation: "h", y: -0.24, x: 0 },
     },
     { responsive: true, displaylogo: false }
@@ -661,20 +674,251 @@ function renderStateScatter(panel, records, maxHoursAxis) {
   );
 }
 
+function computeTimeCategories(records) {
+  const categories = { express: 0, sameDay: 0, multiDay: 0, delayed: 0 };
+  
+  for (const rec of records) {
+    const finalHours = getRelativeHoursOrFallback(rec, "final_verified_h");
+    if (!validHour(finalHours)) continue;
+    
+    if (finalHours < 6) categories.express++;
+    else if (finalHours < 24) categories.sameDay++;
+    else if (finalHours < 72) categories.multiDay++;
+    else categories.delayed++;
+  }
+  
+  return categories;
+}
+
+function renderTimeBreakdown(panel, records) {
+  const target = byId(`${panel}-breakdown`);
+  
+  if (!records.length) {
+    renderEmptyChart(target, "Time to Completion Breakdown", "No records for current filters");
+    return;
+  }
+  
+  const categories = computeTimeCategories(records);
+  const total = categories.express + categories.sameDay + categories.multiDay + categories.delayed;
+  
+  if (total === 0) {
+    renderEmptyChart(target, "Time to Completion Breakdown", "No completed specimens in this cohort");
+    return;
+  }
+  
+  const data = [
+    { label: "⚡ Express (<6h)", value: categories.express, color: "#059669" },
+    { label: "✓ Same-Day (6-24h)", value: categories.sameDay, color: "#10b981" },
+    { label: "📦 Multi-Day (1-3d)", value: categories.multiDay, color: "#f59e0b" },
+    { label: "⚠️ Delayed (>3d)", value: categories.delayed, color: "#dc2626" },
+  ];
+  
+  Plotly.react(
+    target,
+    [
+      {
+        type: "bar",
+        x: data.map(d => d.label),
+        y: data.map(d => (d.value / total) * 100),
+        text: data.map(d => `${d.value} (${((d.value / total) * 100).toFixed(1)}%)`),
+        textposition: "auto",
+        marker: { color: data.map(d => d.color) },
+        hovertemplate: "%{x}<br>%{text}<extra></extra>",
+      },
+    ],
+    {
+      title: { text: "Time to Completion Breakdown", x: 0.01 },
+      paper_bgcolor: "#ffffff",
+      plot_bgcolor: "#ffffff",
+      margin: { t: 44, r: 20, b: 80, l: 56 },
+      xaxis: { tickangle: -20, gridcolor: "#edf2f7" },
+      yaxis: { title: "Percentage of cohort", ticksuffix: "%", gridcolor: "#edf2f7", zeroline: false },
+      showlegend: false,
+    },
+    { responsive: true, displaylogo: false }
+  );
+}
+
+function generateInsights(records) {
+  if (!records.length) return [];
+  
+  const insights = [];
+  const n = records.length;
+  
+  // Insight 1: Median completion time
+  const completionTimes = records
+    .map(r => getRelativeHoursOrFallback(r, "final_verified_h"))
+    .filter(validHour);
+  
+  if (completionTimes.length > 0) {
+    const median = percentile(completionTimes, 0.5);
+    const medianLabel = formatDurationLabel(median * 3600);
+    insights.push({
+      icon: "⏱️",
+      value: medianLabel,
+      label: "Median Completion Time",
+      description: `Half of specimens complete within ${medianLabel}`,
+      type: median < 24 ? "positive" : median < 72 ? "normal" : "warning",
+    });
+  }
+  
+  // Insight 2: Same-day completion rate
+  const categories = computeTimeCategories(records);
+  const sameDayCount = categories.express + categories.sameDay;
+  const sameDayRate = (sameDayCount / n) * 100;
+  insights.push({
+    icon: "✓",
+    value: `${sameDayRate.toFixed(0)}%`,
+    label: "Same-Day Completion",
+    description: `${fmtInt(sameDayCount)} of ${fmtInt(n)} specimens`,
+    type: sameDayRate > 60 ? "positive" : sameDayRate > 40 ? "normal" : "warning",
+  });
+  
+  // Insight 3: Cancellation rate
+  const cancellations = records
+    .map(r => getRelativeHoursOrFallback(r, "cancellation_h"))
+    .filter(validHour).length;
+  const cancelRate = (cancellations / n) * 100;
+  insights.push({
+    icon: "🚫",
+    value: `${cancelRate.toFixed(1)}%`,
+    label: "Cancellation Rate",
+    description: `${fmtInt(cancellations)} specimens cancelled`,
+    type: cancelRate < 5 ? "positive" : cancelRate < 10 ? "warning" : "alert",
+  });
+  
+  // Insight 4: Primary bottleneck
+  const collectedTimes = records.map(r => getRelativeHoursOrFallback(r, "collected_h")).filter(validHour);
+  const receivedTimes = records.map(r => getRelativeHoursOrFallback(r, "received_h")).filter(validHour);
+  const resultTimes = records.map(r => getRelativeHoursOrFallback(r, "first_result_h")).filter(validHour);
+  
+  const medianCollected = collectedTimes.length ? percentile(collectedTimes, 0.5) : 0;
+  const medianReceived = receivedTimes.length ? percentile(receivedTimes, 0.5) : 0;
+  const medianResult = resultTimes.length ? percentile(resultTimes, 0.5) : 0;
+  
+  const gap1 = medianCollected;
+  const gap2 = medianReceived - medianCollected;
+  const gap3 = medianResult - medianReceived;
+  
+  let bottleneck = "Collection";
+  let bottleneckTime = gap1;
+  if (gap2 > bottleneckTime) { bottleneck = "Transport"; bottleneckTime = gap2; }
+  if (gap3 > bottleneckTime) { bottleneck = "Analysis"; bottleneckTime = gap3; }
+  
+  insights.push({
+    icon: "🔍",
+    value: bottleneck,
+    label: "Primary Bottleneck",
+    description: `~${formatDurationLabel(bottleneckTime * 3600)} average delay`,
+    type: "normal",
+  });
+  
+  return insights;
+}
+
+function renderInsights() {
+  const container = byId("insights-container");
+  const grid = byId("insights-grid");
+  
+  const leftRecords = filterRecords(state.panels.left);
+  
+  if (!leftRecords.length) {
+    container.hidden = true;
+    return;
+  }
+  
+  const insights = generateInsights(leftRecords);
+  
+  grid.innerHTML = "";
+  for (const insight of insights) {
+    const card = document.createElement("div");
+    card.className = `insight-card ${insight.type}`;
+    card.innerHTML = `
+      <span class="insight-icon">${insight.icon}</span>
+      <span class="insight-label">${insight.label}</span>
+      <span class="insight-value">${insight.value}</span>
+      <span class="insight-description">${insight.description}</span>
+    `;
+    grid.appendChild(card);
+  }
+  
+  container.hidden = false;
+}
+
+function updateChartCaptions(panel, records, maxHours) {
+  const n = records.length;
+  
+  if (!n) {
+    byId(`${panel}-timeline-caption`).textContent = "";
+    byId(`${panel}-breakdown-caption`).textContent = "";
+    byId(`${panel}-flow-caption`).textContent = "";
+    byId(`${panel}-river-caption`).textContent = "";
+    byId(`${panel}-scatter-caption`).textContent = "";
+    return;
+  }
+  
+  // Timeline caption
+  const completionTimes = records.map(r => getRelativeHoursOrFallback(r, "final_verified_h")).filter(validHour);
+  const p50 = completionTimes.length ? percentile(completionTimes, 0.5) : null;
+  const p90 = completionTimes.length ? percentile(completionTimes, 0.9) : null;
+  
+  if (p50 && p90) {
+    byId(`${panel}-timeline-caption`).innerHTML = 
+      `This timeline shows <strong>when specimens reach each stage</strong>. ` +
+      `In this cohort, <em>50% complete within ${formatDurationLabel(p50 * 3600)}</em> and ` +
+      `90% complete within ${formatDurationLabel(p90 * 3600)}.`;
+  }
+  
+  // Breakdown caption
+  const categories = computeTimeCategories(records);
+  const total = categories.express + categories.sameDay + categories.multiDay + categories.delayed;
+  const fastPct = total > 0 ? ((categories.express + categories.sameDay) / total * 100).toFixed(0) : 0;
+  
+  byId(`${panel}-breakdown-caption`).innerHTML = 
+    `<strong>${fastPct}% of specimens</strong> are completed within 24 hours, with ` +
+    `${categories.express} ultra-fast (<6h) specimens leading the way.`;
+  
+  // Flow caption
+  const h = records.map(r => getRecordHours(r));
+  const completeFlow = h.filter(hrs => 
+    validHour(hrs.collected) && validHour(hrs.received) && 
+    validHour(hrs.firstResult) && validHour(hrs.finalVerified)
+  ).length;
+  const completePct = ((completeFlow / n) * 100).toFixed(0);
+  
+  byId(`${panel}-flow-caption`).innerHTML = 
+    `This Sankey diagram shows <strong>specimen movement between stages</strong>. ` +
+    `${completePct}% of specimens follow the complete workflow path without interruption.`;
+  
+  // River caption
+  byId(`${panel}-river-caption`).innerHTML = 
+    `The ThemeRiver visualization reveals <strong>when different events occur over time</strong>. ` +
+    `Wider sections indicate more activity at that stage during specific timeframes.`;
+  
+  // Scatter caption
+  byId(`${panel}-scatter-caption`).innerHTML = 
+    `Each dot represents <strong>an individual specimen's event</strong>. ` +
+    `Vertical clustering shows common timing patterns, while outliers reveal exceptional cases. ` +
+    `Adjust the jitter slider above to separate overlapping points.`;
+}
+
 function renderPanel(panel) {
   const filtered = filterRecords(state.panels[panel]);
   const n = filtered.length;
   const maxHours = computeMaxHours(filtered);
 
   const { cancellationRate } = renderTimeline(panel, filtered, maxHours);
+  renderTimeBreakdown(panel, filtered);
   renderFlowchart(panel, filtered);
   renderThemeRiver(panel, filtered, maxHours);
   renderStateScatter(panel, filtered, maxHours);
+  updateChartCaptions(panel, filtered, maxHours);
 
   updateStats(panel, n, cancellationRate);
 }
 
 function renderAll() {
+  renderInsights();
   renderPanel("left");
   if (state.showComparison) renderPanel("right");
 }

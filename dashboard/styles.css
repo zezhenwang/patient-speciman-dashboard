@@ -110,6 +110,84 @@ button:hover {
   font-size: 0.95rem;
 }
 
+.insights-container {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 2px solid #e0e7ff;
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+}
+
+.insights-title {
+  margin: 0 0 16px 0;
+  font-size: 1.3rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.insight-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.insight-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.insight-icon {
+  font-size: 1.8rem;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.insight-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 4px 0;
+  display: block;
+}
+
+.insight-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.insight-description {
+  font-size: 0.9rem;
+  color: #4b5563;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+
+.insight-card.positive .insight-value {
+  color: #059669;
+}
+
+.insight-card.warning .insight-value {
+  color: #d97706;
+}
+
+.insight-card.alert .insight-value {
+  color: #dc2626;
+}
+
 .panel-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -168,13 +246,20 @@ select {
   color: var(--text);
 }
 
+.chart-wrapper {
+  margin-top: 16px;
+}
+
 .chart {
-  margin-top: 10px;
   width: 100%;
 }
 
 .chart.timeline {
   min-height: 360px;
+}
+
+.chart.breakdown {
+  min-height: 280px;
 }
 
 .chart.flow {
@@ -187,6 +272,28 @@ select {
 
 .chart.scatter {
   min-height: 330px;
+}
+
+.chart-caption {
+  margin: 8px 0 0 0;
+  padding: 10px 14px;
+  background: #f9fafb;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.chart-caption strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.chart-caption em {
+  font-style: normal;
+  color: #059669;
+  font-weight: 600;
 }
 
 @media (max-width: 1240px) {

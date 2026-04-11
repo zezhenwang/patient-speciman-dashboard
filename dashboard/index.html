@@ -34,6 +34,11 @@
 
       <section id="status" class="status">Loading data...</section>
 
+      <section id="insights-container" class="insights-container" hidden>
+        <h2 class="insights-title">📊 Key Findings</h2>
+        <div id="insights-grid" class="insights-grid"></div>
+      </section>
+
       <section id="panel-grid" class="panel-grid">
         <article class="panel" id="panel-left">
           <div class="panel-head">
@@ -59,10 +64,30 @@
             </label>
           </div>
 
-          <div class="chart timeline" id="left-timeline"></div>
-          <div class="chart flow" id="left-flow"></div>
-          <div class="chart river" id="left-river"></div>
-          <div class="chart scatter" id="left-scatter"></div>
+          <div class="chart-wrapper">
+            <div class="chart timeline" id="left-timeline"></div>
+            <p class="chart-caption" id="left-timeline-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart breakdown" id="left-breakdown"></div>
+            <p class="chart-caption" id="left-breakdown-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart flow" id="left-flow"></div>
+            <p class="chart-caption" id="left-flow-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart river" id="left-river"></div>
+            <p class="chart-caption" id="left-river-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart scatter" id="left-scatter"></div>
+            <p class="chart-caption" id="left-scatter-caption"></p>
+          </div>
         </article>
 
         <article class="panel" id="panel-right" hidden>
@@ -89,10 +114,30 @@
             </label>
           </div>
 
-          <div class="chart timeline" id="right-timeline"></div>
-          <div class="chart flow" id="right-flow"></div>
-          <div class="chart river" id="right-river"></div>
-          <div class="chart scatter" id="right-scatter"></div>
+          <div class="chart-wrapper">
+            <div class="chart timeline" id="right-timeline"></div>
+            <p class="chart-caption" id="right-timeline-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart breakdown" id="right-breakdown"></div>
+            <p class="chart-caption" id="right-breakdown-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart flow" id="right-flow"></div>
+            <p class="chart-caption" id="right-flow-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart river" id="right-river"></div>
+            <p class="chart-caption" id="right-river-caption"></p>
+          </div>
+
+          <div class="chart-wrapper">
+            <div class="chart scatter" id="right-scatter"></div>
+            <p class="chart-caption" id="right-scatter-caption"></p>
+          </div>
         </article>
       </section>
     </main>
