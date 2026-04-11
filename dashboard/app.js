@@ -147,15 +147,45 @@ function seededUnit(seed) {
   return x - Math.floor(x);
 }
 
+const PLOTLY_CONFIG = {
+  responsive: true,
+  displaylogo: false,
+  displayModeBar: false,
+  doubleClick: 'reset',
+};
+
+const MODERN_LAYOUT = {
+  font: { 
+    family: '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif',
+    size: 12,
+    color: '#3f3f46'
+  },
+  paper_bgcolor: 'transparent',
+  plot_bgcolor: 'transparent',
+  hovermode: 'closest',
+  hoverlabel: {
+    bgcolor: 'rgba(24, 24, 27, 0.95)',
+    bordercolor: 'transparent',
+    font: { 
+      family: '-apple-system, BlinkMacSystemFont, "Inter", sans-serif',
+      size: 12,
+      color: '#fff'
+    },
+  },
+};
+
 function renderEmptyChart(target, title, message) {
   Plotly.react(
     target,
     [],
     {
-      title: { text: title, x: 0.01 },
-      margin: { t: 44, r: 24, b: 42, l: 56 },
-      paper_bgcolor: "#ffffff",
-      plot_bgcolor: "#ffffff",
+      ...MODERN_LAYOUT,
+      title: { 
+        text: title,
+        x: 0.02,
+        font: { size: 15, weight: 600, color: '#18181b' }
+      },
+      margin: { t: 50, r: 24, b: 42, l: 56 },
       annotations: [
         {
           text: message,
@@ -164,13 +194,13 @@ function renderEmptyChart(target, title, message) {
           x: 0.5,
           y: 0.5,
           showarrow: false,
-          font: { size: 14, color: "#6b7280" },
+          font: { size: 14, color: '#71717a' },
         },
       ],
       xaxis: { visible: false },
       yaxis: { visible: false },
     },
-    { responsive: true, displaylogo: false }
+    PLOTLY_CONFIG
   );
 }
 
@@ -307,28 +337,40 @@ function renderTimeline(panel, records, maxHours) {
     target,
     traces,
     {
-      title: { text: "Average Workflow Timeline", x: 0.01 },
-      paper_bgcolor: "#ffffff",
-      plot_bgcolor: "#ffffff",
-      margin: { t: 52, r: 20, b: 56, l: 56 },
+      ...MODERN_LAYOUT,
+      title: { 
+        text: "Average Workflow Timeline",
+        x: 0.02,
+        font: { size: 15, weight: 600, color: '#18181b' }
+      },
+      margin: { t: 54, r: 20, b: 60, l: 62 },
       xaxis: {
-        title: "Hours since order creation",
+        title: { text: "Hours since order creation", font: { size: 12, color: '#52525b' } },
         ...buildHourAxis(maxHours),
-        gridcolor: "#edf2f7",
+        gridcolor: "rgba(228, 228, 231, 0.5)",
         zeroline: false,
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
       },
       yaxis: {
-        title: "Share of cohort",
+        title: { text: "Share of cohort", font: { size: 12, color: '#52525b' } },
         tickformat: ".0%",
         range: [0, 1.03],
-        gridcolor: "#edf2f7",
+        gridcolor: "rgba(228, 228, 231, 0.5)",
         zeroline: false,
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
       },
       shapes,
       annotations,
-      legend: { orientation: "h", y: -0.24, x: 0 },
+      legend: { 
+        orientation: "h",
+        y: -0.26,
+        x: 0,
+        font: { size: 11 }
+      },
     },
-    { responsive: true, displaylogo: false }
+    PLOTLY_CONFIG
   );
 
   return { cancellationRate, maxHours };
@@ -460,9 +502,9 @@ function renderFlowchart(panel, records) {
         node: {
           label: flow.nodeLabels,
           color: flow.nodeColors,
-          pad: 18,
-          thickness: 16,
-          line: { color: "rgba(0,0,0,0.2)", width: 0.5 },
+          pad: 20,
+          thickness: 18,
+          line: { color: "rgba(0,0,0,0.15)", width: 0.5 },
         },
         link: {
           source: flow.source,
@@ -473,13 +515,15 @@ function renderFlowchart(panel, records) {
       },
     ],
     {
-      title: { text: "Flowchart of Samples Between Stages", x: 0.01 },
-      margin: { t: 44, r: 24, b: 20, l: 16 },
-      paper_bgcolor: "#ffffff",
-      plot_bgcolor: "#ffffff",
-      font: { size: 12 },
+      ...MODERN_LAYOUT,
+      title: { 
+        text: "Flowchart of Samples Between Stages",
+        x: 0.02,
+        font: { size: 15, weight: 600, color: '#18181b' }
+      },
+      margin: { t: 48, r: 24, b: 20, l: 16 },
     },
-    { responsive: true, displaylogo: false }
+    PLOTLY_CONFIG
   );
 }
 
@@ -552,20 +596,38 @@ function renderThemeRiver(panel, records, maxHours) {
     target,
     traces,
     {
-      title: { text: "ThemeRiver by Stage (Proportion of Events per Hour)", x: 0.01 },
-      paper_bgcolor: "#ffffff",
-      plot_bgcolor: "#ffffff",
-      margin: { t: 44, r: 22, b: 50, l: 60 },
-      xaxis: {
-        title: "Hours since order creation",
-        ...buildHourAxis(maxHours),
-        gridcolor: "#edf2f7",
-        zeroline: false,
+      ...MODERN_LAYOUT,
+      title: { 
+        text: "ThemeRiver by Stage (Proportion of Events per Hour)",
+        x: 0.02,
+        font: { size: 15, weight: 600, color: '#18181b' }
       },
-      yaxis: { title: "Share of events", tickformat: ".0%", range: [0, 1], gridcolor: "#edf2f7", zeroline: false },
-      legend: { orientation: "h", y: -0.28, x: 0 },
+      margin: { t: 48, r: 22, b: 56, l: 66 },
+      xaxis: {
+        title: { text: "Hours since order creation", font: { size: 12, color: '#52525b' } },
+        ...buildHourAxis(maxHours),
+        gridcolor: "rgba(228, 228, 231, 0.5)",
+        zeroline: false,
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
+      },
+      yaxis: {
+        title: { text: "Share of events", font: { size: 12, color: '#52525b' } },
+        tickformat: ".0%",
+        range: [0, 1],
+        gridcolor: "rgba(228, 228, 231, 0.5)",
+        zeroline: false,
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
+      },
+      legend: { 
+        orientation: "h",
+        y: -0.30,
+        x: 0,
+        font: { size: 11 }
+      },
     },
-    { responsive: true, displaylogo: false }
+    PLOTLY_CONFIG
   );
 }
 
@@ -646,18 +708,23 @@ function renderStateScatter(panel, records, maxHoursAxis) {
     target,
     scatter.traces,
     {
-      title: { text: "Sample-Level Event Scatterplot", x: 0.01 },
-      paper_bgcolor: "#ffffff",
-      plot_bgcolor: "#ffffff",
-      margin: { t: 44, r: 20, b: 62, l: 88 },
+      ...MODERN_LAYOUT,
+      title: { 
+        text: "Sample-Level Event Scatterplot",
+        x: 0.02,
+        font: { size: 15, weight: 600, color: '#18181b' }
+      },
+      margin: { t: 48, r: 20, b: 68, l: 94 },
       xaxis: {
-        title: "Hours since order creation",
+        title: { text: "Hours since order creation", font: { size: 12, color: '#52525b' } },
         ...buildHourAxis(maxHoursAxis),
-        gridcolor: "#edf2f7",
+        gridcolor: "rgba(228, 228, 231, 0.5)",
         zeroline: false,
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
       },
       yaxis: {
-        title: "State of specimen",
+        title: { text: "State of specimen", font: { size: 12, color: '#52525b' } },
         tickmode: "array",
         tickvals: scatter.tickvals,
         ticktext: scatter.ticktext,
@@ -665,12 +732,19 @@ function renderStateScatter(panel, records, maxHoursAxis) {
           Math.min(...scatter.tickvals) - 0.7,
           Math.max(...scatter.tickvals) + 0.7,
         ],
-        gridcolor: "#edf2f7",
+        gridcolor: "rgba(228, 228, 231, 0.5)",
         zeroline: false,
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
       },
-      legend: { orientation: "h", y: -0.26, x: 0 },
+      legend: { 
+        orientation: "h",
+        y: -0.28,
+        x: 0,
+        font: { size: 11 }
+      },
     },
-    { responsive: true, displaylogo: false }
+    PLOTLY_CONFIG
   );
 }
 
@@ -722,20 +796,39 @@ function renderTimeBreakdown(panel, records) {
         y: data.map(d => (d.value / total) * 100),
         text: data.map(d => `${d.value} (${((d.value / total) * 100).toFixed(1)}%)`),
         textposition: "auto",
-        marker: { color: data.map(d => d.color) },
+        textfont: { size: 11, color: '#18181b', weight: 600 },
+        marker: { 
+          color: data.map(d => d.color),
+          line: { width: 0 }
+        },
         hovertemplate: "%{x}<br>%{text}<extra></extra>",
       },
     ],
     {
-      title: { text: "Time to Completion Breakdown", x: 0.01 },
-      paper_bgcolor: "#ffffff",
-      plot_bgcolor: "#ffffff",
-      margin: { t: 44, r: 20, b: 80, l: 56 },
-      xaxis: { tickangle: -20, gridcolor: "#edf2f7" },
-      yaxis: { title: "Percentage of cohort", ticksuffix: "%", gridcolor: "#edf2f7", zeroline: false },
+      ...MODERN_LAYOUT,
+      title: { 
+        text: "Time to Completion Breakdown",
+        x: 0.02,
+        font: { size: 15, weight: 600, color: '#18181b' }
+      },
+      margin: { t: 48, r: 20, b: 86, l: 62 },
+      xaxis: {
+        tickangle: -18,
+        gridcolor: "rgba(228, 228, 231, 0.5)",
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
+      },
+      yaxis: {
+        title: { text: "Percentage of cohort", font: { size: 12, color: '#52525b' } },
+        ticksuffix: "%",
+        gridcolor: "rgba(228, 228, 231, 0.5)",
+        zeroline: false,
+        linecolor: 'rgba(228, 228, 231, 0.8)',
+        linewidth: 1,
+      },
       showlegend: false,
     },
-    { responsive: true, displaylogo: false }
+    PLOTLY_CONFIG
   );
 }
 
