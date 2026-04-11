@@ -47,6 +47,21 @@ const EMPTY_FILTERS = Object.freeze({
   day_type: "All",
 });
 
+const FILTER_LABELS = {
+  test_code: "Test code",
+  order_street: "Ordering street",
+  test_performing_dept: "Performing department",
+  test_performing_location: "Performing location",
+  day_type: "Day type",
+};
+
+const STEP_DEFINITIONS = [
+  { label: "Order → Collected", startField: null, endField: "collected_s", color: "#d85f41" },
+  { label: "Collected → Received", startField: "collected_s", endField: "received_s", color: "#0f766e" },
+  { label: "Received → First result", startField: "received_s", endField: "first_result_s", color: "#b88618" },
+  { label: "First result → Final verified", startField: "first_result_s", endField: "final_verified_s", color: "#2f6f45" },
+];
+
 const PLOTLY_CONFIG = {
   responsive: true,
   displaylogo: false,
@@ -114,6 +129,11 @@ function fmtHours(value) {
   if (!Number.isFinite(value)) return "n/a";
   if (value < 1) return `${Math.round(value * 60)} min`;
   return `${value.toFixed(value >= 10 ? 0 : 1)} h`;
+}
+
+function fmtPoints(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)} pts`;
 }
 
 function fmtAxisHour(value) {
@@ -191,6 +211,134 @@ function topGroups(records, field, limit) {
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit);
+}
+
+
+function activeFilters() {
+  return DIMENSIONS.filter((field) => state.filters[field] !== "All").map((field) => ({
+    field,
+    label: FILTER_LABELS[field] || field,
+    value: state.filters[field],
+  }));
+}
+
+function renderFilterFeedback(records) {
+  const total = state.records.length || 0;
+  const ratio = total ? records.length / total : 0;
+  const summaryNode = byId("filter-summary");
+  const pillsNode = byId("filter-pills");
+  if (summaryNode) {
+    summaryNode.textContent = `${fmtInt(records.length)} of ${fmtInt(total)} orders shown (${fmtPercent(ratio)} of the full dataset).`;
+  }
+  if (!pillsNode) return;
+  const pills = activeFilters();
+  pillsNode.innerHTML = pills.length
+    ? pills
+        .map(
+          (pill) => `<span class="filter-pill"><strong>${pill.label}:</strong> ${pill.value}</span>`
+        )
+        .join("")
+    : `<span class="filter-pill"><strong>All filters:</strong> Entire cohort</span>`;
+}
+
+function getStepDurations(records, step) {
+  const values = [];
+  for (const rec of records) {
+    const endValue = valueAt(rec, step.endField);
+    if (typeof endValue !== "number" || endValue < 0) continue;
+    const hours = step.startField
+      ? (endValue - valueAt(rec, step.startField)) / 3600
+      : endValue / 3600;
+    if (Number.isFinite(hours) && hours >= 0) values.push(hours);
+  }
+  return values;
+}
+
+function computeHandoffStats(records) {
+  return STEP_DEFINITIONS.map((step) => {
+    const values = getStepDurations(records, step);
+    return {
+      ...step,
+      count: values.length,
+      median: percentile(values, 0.5),
+      p90: percentile(values, 0.9),
+    };
+  });
+}
+
+function fillInsightGrid(records) {
+  const target = byId("insight-grid");
+  if (!target) return;
+  if (!records.length) {
+    target.innerHTML = `
+      <article class="insight-card full-span" data-tone="gold">
+        <span>No matching orders</span>
+        <strong>Broaden the cohort filters</strong>
+        <p>Try resetting one or more selectors so the dashboard can recalculate the workflow view.</p>
+      </article>
+    `;
+    return;
+  }
+
+  const final6Share = shareWithin(records, "final_verified_h", 6);
+  const final72Share = shareWithin(records, "final_verified_h", 72);
+  const p90Verified = percentile(getCompletedHours(records, "final_verified_h", 72), 0.9);
+  const handoffStats = computeHandoffStats(records).filter((step) => Number.isFinite(step.median));
+  const slowestStep = handoffStats.sort((a, b) => b.median - a.median)[0];
+  const waterfallCounts = computeWaterfallStateCounts(records);
+  const unresolvedEntries = [
+    { label: "Cancelled by 72h", count: waterfallCounts.cancelled },
+    { label: "Received, no result", count: waterfallCounts.inLab },
+    { label: "Result, not verified", count: waterfallCounts.awaitingVerification },
+    { label: "Collected, not received", count: waterfallCounts.inTransport },
+    { label: "Not collected by 72h", count: waterfallCounts.notCollected },
+  ].sort((a, b) => b.count - a.count);
+  const biggestUnresolved = unresolvedEntries[0];
+
+  const cards = [
+    {
+      tone: "coral",
+      label: "Lift after the first 6 hours",
+      value: fmtPoints((final72Share - final6Share) * 100),
+      note: `Verification climbs from ${fmtPercent(final6Share)} at 6 hours to ${fmtPercent(final72Share)} at 72 hours.`,
+    },
+    {
+      tone: "teal",
+      label: "90th percentile verified time",
+      value: fmtHours(p90Verified),
+      note: `Nine in ten completed orders verify by this point inside the 72-hour focus window.`,
+    },
+    {
+      tone: "gold",
+      label: "Slowest typical handoff",
+      value: slowestStep ? slowestStep.label : "n/a",
+      note: slowestStep
+        ? `Median ${fmtHours(slowestStep.median)} with a 90th percentile of ${fmtHours(slowestStep.p90)}.`
+        : "No valid handoff pairs are available in the current cohort.",
+    },
+    {
+      tone: "forest",
+      label: "Largest unresolved bucket",
+      value: biggestUnresolved?.count ? biggestUnresolved.label : "All cleared by 72h",
+      note: biggestUnresolved?.count
+        ? `${fmtInt(biggestUnresolved.count)} orders, or ${fmtPercent(biggestUnresolved.count / records.length)}, still sit here by 72 hours.`
+        : "The filtered cohort has no remaining orders outside the 72-hour verified endpoint.",
+    },
+  ];
+
+  target.innerHTML = cards
+    .map(
+      (card) => `
+        <article class="insight-card" data-tone="${card.tone}">
+          <div>
+            <span>${card.label}</span>
+            <strong>${card.value}</strong>
+          </div>
+          <p>${card.note}</p>
+        </article>
+      `
+    )
+    .join("");
 }
 
 function fillSummaryStrip(records) {
@@ -679,6 +827,63 @@ function renderTestCodeChart(records) {
   );
 }
 
+
+
+function renderHandoffChart(records) {
+  const stats = computeHandoffStats(records).filter((step) => Number.isFinite(step.median));
+  if (!stats.length) {
+    renderEmpty("handoff-chart", "No matching orders.");
+    return;
+  }
+
+  Plotly.react(
+    "handoff-chart",
+    [
+      {
+        type: "bar",
+        orientation: "h",
+        name: "Median",
+        y: stats.map((step) => step.label),
+        x: stats.map((step) => step.median),
+        marker: { color: stats.map((step) => step.color) },
+        text: stats.map((step) => fmtHours(step.median)),
+        textposition: "outside",
+        cliponaxis: false,
+        customdata: stats.map((step) => [step.count, fmtHours(step.p90)]),
+        hovertemplate:
+          "%{y}<br>Median: %{x:.2f}h<br>90th percentile: %{customdata[1]}<br>Orders with both milestones: %{customdata[0]:,}<extra></extra>",
+      },
+      {
+        type: "scatter",
+        mode: "markers",
+        name: "90th percentile",
+        y: stats.map((step) => step.label),
+        x: stats.map((step) => step.p90),
+        marker: { color: "#182127", symbol: "diamond", size: 9 },
+        hovertemplate: "%{y}<br>90th percentile: %{x:.2f}h<extra></extra>",
+      },
+    ],
+    {
+      ...PLOTLY_BASE_LAYOUT,
+      margin: { t: 14, r: 30, b: 44, l: 170 },
+      legend: {
+        ...PLOTLY_BASE_LAYOUT.legend,
+        x: 0,
+        y: 1.14,
+      },
+      xaxis: {
+        ...PLOTLY_BASE_LAYOUT.xaxis,
+        title: { text: "Hours between milestones" },
+      },
+      yaxis: {
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        autorange: "reversed",
+      },
+    },
+    PLOTLY_CONFIG
+  );
+}
+
 function renderStreetChart(records) {
   const groups = topGroups(records, "order_street", 10);
   if (!groups.length) {
@@ -781,6 +986,9 @@ function bindControls() {
 
 function render() {
   const records = filterRecords();
+  renderFilterFeedback(records);
+  fillInsightGrid(records);
+
   if (!records.length) {
     setStatus("No orders match the current filters.");
     fillSummaryStrip(records);
@@ -791,6 +999,7 @@ function render() {
     renderEmpty("waterfall-chart", "No matching orders.");
     renderEmpty("heatmap-6-chart", "No matching orders.");
     renderEmpty("heatmap-72-chart", "No matching orders.");
+    renderEmpty("handoff-chart", "No matching orders.");
     renderEmpty("street-chart", "No matching orders.");
     return;
   }
@@ -806,6 +1015,7 @@ function render() {
   renderWaterfallChart(records);
   renderDepartmentHeatmap(records, "heatmap-6-chart", WINDOW_CONFIGS[0]);
   renderDepartmentHeatmap(records, "heatmap-72-chart", WINDOW_CONFIGS[1]);
+  renderHandoffChart(records);
   renderStreetChart(records);
 }
 
@@ -834,8 +1044,10 @@ async function init() {
     renderEmpty("waterfall-chart", "Dashboard data failed to load.");
     renderEmpty("heatmap-6-chart", "Dashboard data failed to load.");
     renderEmpty("heatmap-72-chart", "Dashboard data failed to load.");
+    renderEmpty("handoff-chart", "Dashboard data failed to load.");
     renderEmpty("street-chart", "Dashboard data failed to load.");
   }
 }
 
 window.addEventListener("DOMContentLoaded", init);
+

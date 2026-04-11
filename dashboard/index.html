@@ -22,6 +22,7 @@
               Measures how far a specimen order moves inside the same-day 6-hour window
               and the 72-hour three-day window.
             </p>
+            <p class="data-note" id="dataset-note"></p>
           </div>
           <div class="masthead-summary" id="summary-strip" aria-live="polite"></div>
         </div>
@@ -34,6 +35,7 @@
               <p class="kicker">Scope</p>
               <h2>Filter the order cohort</h2>
             </div>
+            <p class="status" id="status" aria-live="polite"></p>
           </div>
 
           <div class="filters-grid">
@@ -59,6 +61,23 @@
             </label>
             <button id="reset-filters" class="reset-button" type="button">Reset filters</button>
           </div>
+
+          <div class="filter-feedback">
+            <p class="filter-summary" id="filter-summary"></p>
+            <div class="filter-pills" id="filter-pills"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="insight-band">
+        <div class="section-inner">
+          <div class="section-heading">
+            <div>
+              <p class="kicker">Highlights</p>
+              <h2>Where attention is needed</h2>
+            </div>
+          </div>
+          <div class="insight-grid" id="insight-grid"></div>
         </div>
       </section>
 
@@ -151,7 +170,15 @@
               <div class="chart-frame" id="heatmap-72-chart"></div>
             </article>
 
-            <article class="chart-panel chart-panel-wide">
+            <article class="chart-panel">
+              <div class="chart-header">
+                <h3>Median handoff time by stage</h3>
+                <p>Typical elapsed time between milestones. The marker shows the 90th percentile to expose long tails.</p>
+              </div>
+              <div class="chart-frame" id="handoff-chart"></div>
+            </article>
+
+            <article class="chart-panel">
               <div class="chart-header">
                 <h3>Ordering streets against the 72-hour target</h3>
                 <p>The highest-volume ordering streets ranked by how many orders are fully verified within 72 hours.</p>

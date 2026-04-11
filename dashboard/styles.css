@@ -52,6 +52,7 @@ input {
 
 .masthead,
 .control-band,
+.insight-band,
 .window-band,
 .chart-band {
   padding: 24px 0;
@@ -202,6 +203,106 @@ input {
   align-items: center;
 }
 
+
+
+.filter-feedback {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filter-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.filter-pill strong {
+  color: var(--teal);
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.insight-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.insight-card span {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.insight-card strong {
+  display: block;
+  font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+  line-height: 1.15;
+}
+
+.insight-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.insight-card.full-span {
+  grid-column: 1 / -1;
+}
+
+.insight-card[data-tone="teal"] {
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(255, 255, 255, 0.96));
+}
+
+.insight-card[data-tone="coral"] {
+  background: linear-gradient(180deg, rgba(216, 95, 65, 0.08), rgba(255, 255, 255, 0.96));
+}
+
+.insight-card[data-tone="gold"] {
+  background: linear-gradient(180deg, rgba(184, 134, 24, 0.08), rgba(255, 255, 255, 0.96));
+}
+
+.insight-card[data-tone="forest"] {
+  background: linear-gradient(180deg, rgba(47, 111, 69, 0.08), rgba(255, 255, 255, 0.96));
+}
+
 .filters-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -323,12 +424,113 @@ select:focus,
 
 @media (max-width: 1100px) {
   .masthead-layout,
+  .insight-grid,
   .window-grid,
   .chart-grid {
     grid-template-columns: 1fr;
   }
 
-  .filters-grid {
+  
+
+.filter-feedback {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filter-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.filter-pill strong {
+  color: var(--teal);
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.insight-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.insight-card span {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.insight-card strong {
+  display: block;
+  font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+  line-height: 1.15;
+}
+
+.insight-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.insight-card.full-span {
+  grid-column: 1 / -1;
+}
+
+.insight-card[data-tone="teal"] {
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(255, 255, 255, 0.96));
+}
+
+.insight-card[data-tone="coral"] {
+  background: linear-gradient(180deg, rgba(216, 95, 65, 0.08), rgba(255, 255, 255, 0.96));
+}
+
+.insight-card[data-tone="gold"] {
+  background: linear-gradient(180deg, rgba(184, 134, 24, 0.08), rgba(255, 255, 255, 0.96));
+}
+
+.insight-card[data-tone="forest"] {
+  background: linear-gradient(180deg, rgba(47, 111, 69, 0.08), rgba(255, 255, 255, 0.96));
+}
+
+.filters-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -340,6 +542,7 @@ select:focus,
 
   .masthead-summary,
   .window-metrics,
+  .insight-grid,
   .filters-grid,
   .chart-grid {
     grid-template-columns: 1fr;
