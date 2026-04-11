@@ -22,7 +22,6 @@
               Every view on this page measures how far a specimen order moves inside the same-day 6-hour window
               and the 72-hour three-day window.
             </p>
-            <p class="data-note" id="dataset-note">Loading dataset details...</p>
           </div>
           <div class="masthead-summary" id="summary-strip" aria-live="polite"></div>
         </div>
@@ -35,7 +34,6 @@
               <p class="kicker">Scope</p>
               <h2>Filter the order cohort</h2>
             </div>
-            <div id="status" class="status">Loading data...</div>
           </div>
 
           <div class="filters-grid">
@@ -105,10 +103,10 @@
           </div>
 
           <div class="chart-grid">
-            <article class="chart-panel chart-panel-wide">
+            <article class="chart-panel">
               <div class="chart-header">
                 <h3>Milestone completion inside each window</h3>
-                <p>Share of the filtered cohort reaching each stage by 6 hours and by 72 hours.</p>
+                <p>Share of the filtered cohort reaching each stage, including cancellation, by 6 hours and by 72 hours.</p>
               </div>
               <div class="chart-frame" id="window-stage-chart"></div>
             </article>
@@ -124,9 +122,17 @@
             <article class="chart-panel chart-panel-wide">
               <div class="chart-header">
                 <h3>Cumulative progress through the first 72 hours</h3>
-                <p>The stage curves stop at 72 hours so late outliers do not dominate the picture.</p>
+                <p>The stage curves use a log-scaled hour axis and stop at 72 hours so late outliers do not dominate the picture.</p>
               </div>
               <div class="chart-frame" id="cumulative-chart"></div>
+            </article>
+
+            <article class="chart-panel chart-panel-wide">
+              <div class="chart-header">
+                <h3>Specimen state movement waterfall</h3>
+                <p>Testing view of how the filtered cohort moves from ordered specimens to a 72-hour verified endpoint.</p>
+              </div>
+              <div class="chart-frame" id="waterfall-chart"></div>
             </article>
 
             <article class="chart-panel">

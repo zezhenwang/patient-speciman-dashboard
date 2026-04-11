@@ -13,9 +13,30 @@ const STAGES = [
   { label: "Final Verified", field: "final_verified_h", color: "#2f6f45" },
 ];
 
+const MILESTONE_STAGES = [
+  ...STAGES,
+  { label: "Cancelled", field: "cancellation_h", color: "#6b7280" },
+];
+
 const WINDOW_CONFIGS = [
   { key: "6", hours: 6, title: "6 hours", tone: "coral", color: "#d85f41" },
   { key: "72", hours: 72, title: "72 hours", tone: "teal", color: "#0f766e" },
+];
+
+const MIN_LOG_HOURS = 1 / 60;
+const LOG_HOUR_GRID = [
+  MIN_LOG_HOURS,
+  5 / 60,
+  15 / 60,
+  30 / 60,
+  1,
+  2,
+  4,
+  6,
+  12,
+  24,
+  48,
+  72,
 ];
 
 const EMPTY_FILTERS = Object.freeze({
@@ -76,6 +97,7 @@ function byId(id) {
 
 function setStatus(text, isError = false) {
   const node = byId("status");
+  if (!node) return;
   node.textContent = text;
   node.style.color = isError ? "#b42318" : "#56616b";
 }
@@ -92,6 +114,11 @@ function fmtHours(value) {
   if (!Number.isFinite(value)) return "n/a";
   if (value < 1) return `${Math.round(value * 60)} min`;
   return `${value.toFixed(value >= 10 ? 0 : 1)} h`;
+}
+
+function fmtAxisHour(value) {
+  if (value < 1) return `${Math.round(value * 60)}m`;
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}h`;
 }
 
 function percentile(values, p) {
@@ -292,16 +319,18 @@ function renderWindowStageChart(records) {
     return;
   }
 
+  const labels = MILESTONE_STAGES.map((stage) => stage.label);
   const traces = WINDOW_CONFIGS.map((windowConfig) => ({
     type: "bar",
+    orientation: "h",
     name: `${windowConfig.title}`,
-    x: STAGES.map((stage) => stage.label),
-    y: STAGES.map((stage) => shareWithin(records, stage.field, windowConfig.hours) * 100),
+    y: labels,
+    x: MILESTONE_STAGES.map((stage) => shareWithin(records, stage.field, windowConfig.hours) * 100),
     marker: { color: windowConfig.color },
-    text: STAGES.map((stage) => fmtPercent(shareWithin(records, stage.field, windowConfig.hours))),
+    text: MILESTONE_STAGES.map((stage) => fmtPercent(shareWithin(records, stage.field, windowConfig.hours))),
     textposition: "outside",
     cliponaxis: false,
-    hovertemplate: "%{x}<br>%{y:.1f}% of orders<extra>" + windowConfig.title + "</extra>",
+    hovertemplate: "%{y}<br>%{x:.1f}% of orders<extra>" + windowConfig.title + "</extra>",
   }));
 
   Plotly.react(
@@ -310,15 +339,16 @@ function renderWindowStageChart(records) {
     {
       ...PLOTLY_BASE_LAYOUT,
       barmode: "group",
-      yaxis: {
-        ...PLOTLY_BASE_LAYOUT.yaxis,
+      margin: { t: 16, r: 28, b: 46, l: 118 },
+      xaxis: {
+        ...PLOTLY_BASE_LAYOUT.xaxis,
         range: [0, 105],
         ticksuffix: "%",
         title: { text: "Share of filtered orders" },
       },
-      xaxis: {
-        ...PLOTLY_BASE_LAYOUT.xaxis,
-        tickangle: 0,
+      yaxis: {
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        autorange: "reversed",
       },
     },
     PLOTLY_CONFIG
@@ -332,30 +362,27 @@ function renderCumulativeChart(records) {
   }
 
   const horizon = 72;
-  const hours = Array.from({ length: horizon + 1 }, (_, i) => i);
+  const hourLabels = LOG_HOUR_GRID.map(fmtAxisHour);
   const traces = STAGES.map((stage) => {
-    const bins = new Array(horizon + 1).fill(0);
-    for (const rec of records) {
-      const value = hourAt(rec, stage.field);
-      if (!Number.isFinite(value) || value > horizon) continue;
-      bins[Math.min(horizon, Math.floor(value))] += 1;
-    }
+    const values = getCompletedHours(records, stage.field, horizon)
+      .map((value) => Math.max(value, MIN_LOG_HOURS))
+      .sort((a, b) => a - b);
 
-    const y = [];
-    let running = 0;
-    for (const count of bins) {
-      running += count;
-      y.push((running / records.length) * 100);
-    }
+    let pointer = 0;
+    const y = LOG_HOUR_GRID.map((limit) => {
+      while (pointer < values.length && values[pointer] <= limit) pointer += 1;
+      return (pointer / records.length) * 100;
+    });
 
     return {
       type: "scatter",
       mode: "lines",
       name: stage.label,
-      x: hours,
+      x: LOG_HOUR_GRID,
       y,
+      customdata: hourLabels,
       line: { color: stage.color, width: 3 },
-      hovertemplate: "%{x}h<br>%{y:.1f}% of orders<extra>" + stage.label + "</extra>",
+      hovertemplate: "%{customdata}<br>%{y:.1f}% of orders<extra>" + stage.label + "</extra>",
     };
   });
 
@@ -369,7 +396,7 @@ function renderCumulativeChart(records) {
           type: "rect",
           xref: "x",
           yref: "paper",
-          x0: 0,
+          x0: MIN_LOG_HOURS,
           x1: 6,
           y0: 0,
           y1: 1,
@@ -412,10 +439,11 @@ function renderCumulativeChart(records) {
       ],
       xaxis: {
         ...PLOTLY_BASE_LAYOUT.xaxis,
-        range: [0, 72],
+        type: "log",
+        range: [Math.log10(MIN_LOG_HOURS), Math.log10(horizon)],
         tickmode: "array",
-        tickvals: [0, 6, 12, 24, 36, 48, 60, 72],
-        ticksuffix: "h",
+        tickvals: LOG_HOUR_GRID,
+        ticktext: hourLabels,
         title: { text: "Elapsed hours from order" },
       },
       yaxis: {
@@ -478,6 +506,86 @@ function renderDepartmentHeatmap(records, targetId, windowConfig) {
       yaxis: {
         ...PLOTLY_BASE_LAYOUT.yaxis,
         automargin: true,
+      },
+    },
+    PLOTLY_CONFIG
+  );
+}
+
+function computeWaterfallStateCounts(records) {
+  const counts = {
+    verified: 0,
+    cancelled: 0,
+    awaitingVerification: 0,
+    inLab: 0,
+    inTransport: 0,
+    notCollected: 0,
+  };
+
+  for (const rec of records) {
+    if (hourAt(rec, "final_verified_h") <= 72) {
+      counts.verified += 1;
+    } else if (hourAt(rec, "cancellation_h") <= 72) {
+      counts.cancelled += 1;
+    } else if (hourAt(rec, "first_result_h") <= 72) {
+      counts.awaitingVerification += 1;
+    } else if (hourAt(rec, "received_h") <= 72) {
+      counts.inLab += 1;
+    } else if (hourAt(rec, "collected_h") <= 72) {
+      counts.inTransport += 1;
+    } else {
+      counts.notCollected += 1;
+    }
+  }
+
+  return counts;
+}
+
+function renderWaterfallChart(records) {
+  if (!records.length) {
+    renderEmpty("waterfall-chart", "No matching orders.");
+    return;
+  }
+
+  const counts = computeWaterfallStateCounts(records);
+  const steps = [
+    { label: "Ordered", value: records.length, measure: "absolute" },
+    { label: "Not collected by 72h", value: -counts.notCollected, measure: "relative" },
+    { label: "Collected, not received", value: -counts.inTransport, measure: "relative" },
+    { label: "Received, no result", value: -counts.inLab, measure: "relative" },
+    { label: "Result, not verified", value: -counts.awaitingVerification, measure: "relative" },
+    { label: "Cancelled by 72h", value: -counts.cancelled, measure: "relative" },
+    { label: "Verified by 72h", value: 0, measure: "total" },
+  ];
+
+  Plotly.react(
+    "waterfall-chart",
+    [
+      {
+        type: "waterfall",
+        orientation: "h",
+        measure: steps.map((step) => step.measure),
+        y: steps.map((step) => step.label),
+        x: steps.map((step) => step.value),
+        text: steps.map((step) => fmtInt(Math.abs(step.measure === "total" ? counts.verified : step.value))),
+        textposition: "outside",
+        connector: { line: { color: "rgba(24, 33, 39, 0.28)", width: 1 } },
+        increasing: { marker: { color: "#0f766e" } },
+        decreasing: { marker: { color: "#d85f41" } },
+        totals: { marker: { color: "#2f6f45" } },
+        hovertemplate: "%{y}<br>%{text} orders<extra></extra>",
+      },
+    ],
+    {
+      ...PLOTLY_BASE_LAYOUT,
+      margin: { t: 18, r: 32, b: 52, l: 154 },
+      xaxis: {
+        ...PLOTLY_BASE_LAYOUT.xaxis,
+        title: { text: "Orders remaining in the 72-hour path" },
+      },
+      yaxis: {
+        ...PLOTLY_BASE_LAYOUT.yaxis,
+        autorange: "reversed",
       },
     },
     PLOTLY_CONFIG
@@ -588,6 +696,18 @@ function renderStreetChart(records) {
       {
         type: "bar",
         orientation: "h",
+        name: "6-hour verified",
+        y: ordered.map((item) => item.label),
+        x: ordered.map((item) => item.share6),
+        marker: { color: "#d85f41" },
+        text: ordered.map((item) => `${item.share6.toFixed(1)}%`),
+        textposition: "outside",
+        cliponaxis: false,
+        hovertemplate: "%{y}<br>%{x:.1f}%<extra>6-hour verified</extra>",
+      },
+      {
+        type: "bar",
+        orientation: "h",
         name: "72-hour verified",
         y: ordered.map((item) => item.label),
         x: ordered.map((item) => item.share72),
@@ -597,22 +717,10 @@ function renderStreetChart(records) {
         cliponaxis: false,
         hovertemplate: "%{y}<br>%{x:.1f}%<extra>72-hour verified</extra>",
       },
-      {
-        type: "scatter",
-        mode: "markers",
-        name: "6-hour verified",
-        y: ordered.map((item) => item.label),
-        x: ordered.map((item) => item.share6),
-        marker: {
-          color: "#d85f41",
-          size: 11,
-          symbol: "diamond",
-        },
-        hovertemplate: "%{y}<br>%{x:.1f}%<extra>6-hour verified</extra>",
-      },
     ],
     {
       ...PLOTLY_BASE_LAYOUT,
+      barmode: "group",
       margin: { t: 14, r: 32, b: 44, l: 122 },
       xaxis: {
         ...PLOTLY_BASE_LAYOUT.xaxis,
@@ -623,6 +731,7 @@ function renderStreetChart(records) {
       yaxis: {
         ...PLOTLY_BASE_LAYOUT.yaxis,
         automargin: true,
+        autorange: "reversed",
       },
     },
     PLOTLY_CONFIG
@@ -630,6 +739,7 @@ function renderStreetChart(records) {
 }
 
 function updateDatasetNote() {
+  if (!byId("dataset-note")) return;
   const generatedAt = state.dataset.generated_at_utc ? new Date(state.dataset.generated_at_utc) : null;
   const windows = state.dataset.focus_windows_hours || WINDOW_CONFIGS.map((config) => config.hours);
   const generatedLabel = generatedAt && !Number.isNaN(generatedAt.valueOf()) ? generatedAt.toLocaleString() : "unknown";
@@ -673,6 +783,7 @@ function render() {
     renderEmpty("window-stage-chart", "No matching orders.");
     renderEmpty("test-code-chart", "No matching orders.");
     renderEmpty("cumulative-chart", "No matching orders.");
+    renderEmpty("waterfall-chart", "No matching orders.");
     renderEmpty("heatmap-6-chart", "No matching orders.");
     renderEmpty("heatmap-72-chart", "No matching orders.");
     renderEmpty("street-chart", "No matching orders.");
@@ -687,6 +798,7 @@ function render() {
   renderWindowStageChart(records);
   renderTestCodeChart(records);
   renderCumulativeChart(records);
+  renderWaterfallChart(records);
   renderDepartmentHeatmap(records, "heatmap-6-chart", WINDOW_CONFIGS[0]);
   renderDepartmentHeatmap(records, "heatmap-72-chart", WINDOW_CONFIGS[1]);
   renderStreetChart(records);
@@ -714,6 +826,7 @@ async function init() {
     renderEmpty("window-stage-chart", "Dashboard data failed to load.");
     renderEmpty("test-code-chart", "Dashboard data failed to load.");
     renderEmpty("cumulative-chart", "Dashboard data failed to load.");
+    renderEmpty("waterfall-chart", "Dashboard data failed to load.");
     renderEmpty("heatmap-6-chart", "Dashboard data failed to load.");
     renderEmpty("heatmap-72-chart", "Dashboard data failed to load.");
     renderEmpty("street-chart", "Dashboard data failed to load.");
