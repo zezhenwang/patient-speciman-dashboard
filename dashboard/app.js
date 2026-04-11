@@ -506,6 +506,7 @@ function renderDepartmentHeatmap(records, targetId, windowConfig) {
       yaxis: {
         ...PLOTLY_BASE_LAYOUT.yaxis,
         automargin: true,
+        autorange: "reversed",
       },
     },
     PLOTLY_CONFIG
@@ -599,7 +600,7 @@ function renderTestCodeChart(records) {
     return;
   }
 
-  const y = groups.map(([code, count]) => `${code} (${fmtInt(count)})`).reverse();
+  const y = groups.map(([code, count]) => `${code} (${fmtInt(count)})`);
   const categories = [
     {
       name: "0-6h",
@@ -616,7 +617,7 @@ function renderTestCodeChart(records) {
       },
     },
     {
-      name: "Outside 72h or open",
+      name: "Outside 72h",
       color: "#9aa4ac",
       getShare(hours) {
         return !Number.isFinite(hours) || hours > 72;
@@ -627,8 +628,7 @@ function renderTestCodeChart(records) {
   const traces = categories.map((category) => {
     const x = [];
     const text = [];
-    for (let i = groups.length - 1; i >= 0; i -= 1) {
-      const [code] = groups[i];
+    for (const [code] of groups) {
       const groupRecords = records.filter((rec) => valueAt(rec, "test_code") === code);
       const count = groupRecords.filter((rec) => category.getShare(hourAt(rec, "final_verified_h"))).length;
       const share = groupRecords.length ? (count / groupRecords.length) * 100 : 0;
@@ -656,6 +656,12 @@ function renderTestCodeChart(records) {
     {
       ...PLOTLY_BASE_LAYOUT,
       barmode: "stack",
+      legend: {
+        ...PLOTLY_BASE_LAYOUT.legend,
+        traceorder: "normal",
+        x: 0,
+        xanchor: "left",
+      },
       margin: { t: 14, r: 20, b: 44, l: 106 },
       xaxis: {
         ...PLOTLY_BASE_LAYOUT.xaxis,
@@ -666,6 +672,7 @@ function renderTestCodeChart(records) {
       yaxis: {
         ...PLOTLY_BASE_LAYOUT.yaxis,
         automargin: true,
+        autorange: "reversed",
       },
     },
     PLOTLY_CONFIG
@@ -679,16 +686,14 @@ function renderStreetChart(records) {
     return;
   }
 
-  const ordered = [...groups]
-    .map(([street, count]) => {
-      const groupRecords = records.filter((rec) => valueAt(rec, "order_street") === street);
-      return {
-        label: `${street} (${fmtInt(count)})`,
-        share72: shareWithin(groupRecords, "final_verified_h", 72) * 100,
-        share6: shareWithin(groupRecords, "final_verified_h", 6) * 100,
-      };
-    })
-    .sort((a, b) => b.share72 - a.share72);
+  const ordered = groups.map(([street, count]) => {
+    const groupRecords = records.filter((rec) => valueAt(rec, "order_street") === street);
+    return {
+      label: `${street} (${fmtInt(count)})`,
+      share72: shareWithin(groupRecords, "final_verified_h", 72) * 100,
+      share6: shareWithin(groupRecords, "final_verified_h", 6) * 100,
+    };
+  });
 
   Plotly.react(
     "street-chart",
