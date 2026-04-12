@@ -266,88 +266,12 @@ function computeHandoffStats(records) {
   });
 }
 
-function fillInsightGrid(records) {
-  const target = byId("insight-grid");
-  if (!target) return;
-  if (!records.length) {
-    target.innerHTML = `
-      <article class="insight-card full-span" data-tone="gold">
-        <span>No matching orders</span>
-        <strong>Broaden the cohort filters</strong>
-        <p>Try resetting one or more selectors so the dashboard can recalculate the workflow view.</p>
-      </article>
-    `;
-    return;
-  }
-
-  const final6Share = shareWithin(records, "final_verified_h", 6);
-  const final72Share = shareWithin(records, "final_verified_h", 72);
-  const p90Verified = percentile(getCompletedHours(records, "final_verified_h", 72), 0.9);
-  const handoffStats = computeHandoffStats(records).filter((step) => Number.isFinite(step.median));
-  const slowestStep = handoffStats.sort((a, b) => b.median - a.median)[0];
-  const waterfallCounts = computeWaterfallStateCounts(records);
-  const unresolvedEntries = [
-    { label: "Cancelled by 72h", count: waterfallCounts.cancelled },
-    { label: "Received, no result", count: waterfallCounts.inLab },
-    { label: "Result, not verified", count: waterfallCounts.awaitingVerification },
-    { label: "Collected, not received", count: waterfallCounts.inTransport },
-    { label: "Not collected by 72h", count: waterfallCounts.notCollected },
-  ].sort((a, b) => b.count - a.count);
-  const biggestUnresolved = unresolvedEntries[0];
-
-  const cards = [
-    {
-      tone: "coral",
-      label: "Lift after the first 6 hours",
-      value: fmtPoints((final72Share - final6Share) * 100),
-      note: `Verification climbs from ${fmtPercent(final6Share)} at 6 hours to ${fmtPercent(final72Share)} at 72 hours.`,
-    },
-    {
-      tone: "teal",
-      label: "90th percentile verified time",
-      value: fmtHours(p90Verified),
-      note: `Nine in ten completed orders verify by this point inside the 72-hour focus window.`,
-    },
-    {
-      tone: "gold",
-      label: "Slowest typical handoff",
-      value: slowestStep ? slowestStep.label : "n/a",
-      note: slowestStep
-        ? `Median ${fmtHours(slowestStep.median)} with a 90th percentile of ${fmtHours(slowestStep.p90)}.`
-        : "No valid handoff pairs are available in the current cohort.",
-    },
-    {
-      tone: "forest",
-      label: "Largest unresolved bucket",
-      value: biggestUnresolved?.count ? biggestUnresolved.label : "All cleared by 72h",
-      note: biggestUnresolved?.count
-        ? `${fmtInt(biggestUnresolved.count)} orders, or ${fmtPercent(biggestUnresolved.count / records.length)}, still sit here by 72 hours.`
-        : "The filtered cohort has no remaining orders outside the 72-hour verified endpoint.",
-    },
-  ];
-
-  target.innerHTML = cards
-    .map(
-      (card) => `
-        <article class="insight-card" data-tone="${card.tone}">
-          <div>
-            <span>${card.label}</span>
-            <strong>${card.value}</strong>
-          </div>
-          <p>${card.note}</p>
-        </article>
-      `
-    )
-    .join("");
-}
-
 function fillSummaryStrip(records) {
-  const final6 = countWithin(records, "final_verified_h", 6);
   const final72 = countWithin(records, "final_verified_h", 72);
-  const completed72 = getCompletedHours(records, "final_verified_h", 72);
+  const completedAll = getCompletedHours(records, "final_verified_h");
   const outsideWindow = records.length - final72;
 
-  const cards = [
+  const summaryCards = [
     {
       tone: "teal",
       label: "Orders in focus",
@@ -355,24 +279,57 @@ function fillSummaryStrip(records) {
       note: `${fmtInt(distinctCount(records, "test_code"))} test codes in the filtered cohort`,
     },
     {
-      tone: "coral",
-      label: "Verified in 6 hours",
-      value: fmtPercent(records.length ? final6 / records.length : 0),
-      note: `${fmtInt(final6)} orders finish inside the same-day window`,
-    },
-    {
-      tone: "forest",
-      label: "Verified in 72 hours",
-      value: fmtPercent(records.length ? final72 / records.length : 0),
-      note: `${fmtInt(final72)} orders finish inside the three-day window`,
-    },
-    {
       tone: "gold",
-      label: "Median verified time",
-      value: fmtHours(percentile(completed72, 0.5)),
+      label: "90th percentile verified time",
+      value: fmtHours(percentile(completedAll, 0.9)),
       note: `${fmtInt(outsideWindow)} orders remain outside the 72-hour focus window`,
     },
   ];
+  let attentionCards;
+
+  if (!records.length) {
+    attentionCards = [
+      {
+        tone: "gold",
+        label: "No matching orders",
+        value: "Broaden filters",
+        note: "Try resetting one or more selectors so the workflow view can recalculate.",
+      },
+    ];
+  } else {
+    const handoffStats = computeHandoffStats(records).filter((step) => Number.isFinite(step.median));
+    const slowestStep = handoffStats.sort((a, b) => b.median - a.median)[0];
+    const waterfallCounts = computeWaterfallStateCounts(records);
+    const unresolvedEntries = [
+      { label: "Cancelled by 72h", count: waterfallCounts.cancelled },
+      { label: "Received, no result", count: waterfallCounts.inLab },
+      { label: "Result, not verified", count: waterfallCounts.awaitingVerification },
+      { label: "Collected, not received", count: waterfallCounts.inTransport },
+      { label: "Not collected by 72h", count: waterfallCounts.notCollected },
+    ].sort((a, b) => b.count - a.count);
+    const biggestUnresolved = unresolvedEntries[0];
+
+    attentionCards = [
+      {
+        tone: "gold",
+        label: "Slowest typical handoff",
+        value: slowestStep ? slowestStep.label : "n/a",
+        note: slowestStep
+          ? `Median ${fmtHours(slowestStep.median)} with a 90th percentile of ${fmtHours(slowestStep.p90)}.`
+          : "No valid handoff pairs are available in the current cohort.",
+      },
+      {
+        tone: "forest",
+        label: "Largest unresolved bucket",
+        value: biggestUnresolved?.count ? biggestUnresolved.label : "All cleared by 72h",
+        note: biggestUnresolved?.count
+          ? `${fmtInt(biggestUnresolved.count)} orders, or ${fmtPercent(biggestUnresolved.count / records.length)}, still sit here by 72 hours.`
+          : "The filtered cohort has no remaining orders outside the 72-hour verified endpoint.",
+      },
+    ];
+  }
+
+  const cards = [...summaryCards, ...attentionCards];
 
   byId("summary-strip").innerHTML = cards
     .map(
@@ -948,15 +905,6 @@ function renderStreetChart(records) {
   );
 }
 
-function updateDatasetNote() {
-  if (!byId("dataset-note")) return;
-  const generatedAt = state.dataset.generated_at_utc ? new Date(state.dataset.generated_at_utc) : null;
-  const windows = state.dataset.focus_windows_hours || WINDOW_CONFIGS.map((config) => config.hours);
-  const generatedLabel = generatedAt && !Number.isNaN(generatedAt.valueOf()) ? generatedAt.toLocaleString() : "unknown";
-  byId("dataset-note").textContent =
-    `Built from ${fmtInt(state.records.length)} order-test records. Window rules: ${windows.join("h and ")}h. Dataset generated ${generatedLabel}.`;
-}
-
 function populateFilters() {
   for (const field of DIMENSIONS) {
     const select = byId(`filter-${field}`);
@@ -987,10 +935,8 @@ function bindControls() {
 function render() {
   const records = filterRecords();
   renderFilterFeedback(records);
-  fillInsightGrid(records);
 
   if (!records.length) {
-    setStatus("No orders match the current filters.");
     fillSummaryStrip(records);
     fillWindowMetrics(records);
     renderEmpty("window-stage-chart", "No matching orders.");
@@ -1003,9 +949,6 @@ function render() {
     renderEmpty("street-chart", "No matching orders.");
     return;
   }
-
-  const final72 = countWithin(records, "final_verified_h", 72);
-  setStatus(`${fmtInt(records.length)} orders match the filters. ${fmtPercent(final72 / records.length)} are verified within 72 hours.`);
 
   fillSummaryStrip(records);
   fillWindowMetrics(records);
@@ -1030,13 +973,11 @@ async function init() {
     state.records = state.dataset.records || [];
     state.index = Object.fromEntries((state.dataset.fields || []).map((field, index) => [field, index]));
 
-    updateDatasetNote();
     populateFilters();
     bindControls();
     render();
   } catch (error) {
     setStatus("Failed to load dashboard data.", true);
-    byId("dataset-note").textContent = "The dashboard data could not be loaded.";
     console.error(error);
     renderEmpty("window-stage-chart", "Dashboard data failed to load.");
     renderEmpty("test-code-chart", "Dashboard data failed to load.");
@@ -1050,4 +991,3 @@ async function init() {
 }
 
 window.addEventListener("DOMContentLoaded", init);
-

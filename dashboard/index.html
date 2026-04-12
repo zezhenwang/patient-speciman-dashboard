@@ -19,65 +19,23 @@
             <p class="eyebrow">Group 5: Zezhen Wang, Zixiang Wang</p>
             <h1>Specimen delivery dashboard</h1>
             <p class="lede">
-              Measures how far a specimen order moves inside the same-day 6-hour window
-              and the 72-hour three-day window.
+              Measures how far a specimen order moves inside the same-day 6-hour window and the 72-hour three-day window.
             </p>
-            <p class="data-note" id="dataset-note"></p>
           </div>
-          <div class="masthead-summary" id="summary-strip" aria-live="polite"></div>
         </div>
       </section>
 
       <section class="control-band">
         <div class="section-inner">
-          <div class="section-heading">
-            <div>
-              <p class="kicker">Scope</p>
-              <h2>Filter the order cohort</h2>
+          <div class="scope-highlights">
+            <div class="section-heading">
+              <div>
+                <p class="kicker">Highlights</p>
+                <h2>Where attention is needed</h2>
+              </div>
             </div>
-            <p class="status" id="status" aria-live="polite"></p>
+            <div class="masthead-summary combined-summary" id="summary-strip" aria-live="polite"></div>
           </div>
-
-          <div class="filters-grid">
-            <label>
-              <span>Test code</span>
-              <select id="filter-test_code" data-field="test_code"></select>
-            </label>
-            <label>
-              <span>Ordering street</span>
-              <select id="filter-order_street" data-field="order_street"></select>
-            </label>
-            <label>
-              <span>Performing department</span>
-              <select id="filter-test_performing_dept" data-field="test_performing_dept"></select>
-            </label>
-            <label>
-              <span>Performing location</span>
-              <select id="filter-test_performing_location" data-field="test_performing_location"></select>
-            </label>
-            <label>
-              <span>Day type</span>
-              <select id="filter-day_type" data-field="day_type"></select>
-            </label>
-            <button id="reset-filters" class="reset-button" type="button">Reset filters</button>
-          </div>
-
-          <div class="filter-feedback">
-            <p class="filter-summary" id="filter-summary"></p>
-            <div class="filter-pills" id="filter-pills"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="insight-band">
-        <div class="section-inner">
-          <div class="section-heading">
-            <div>
-              <p class="kicker">Highlights</p>
-              <h2>Where attention is needed</h2>
-            </div>
-          </div>
-          <div class="insight-grid" id="insight-grid"></div>
         </div>
       </section>
 
@@ -108,6 +66,46 @@
               </div>
               <div class="window-metrics" id="window-72-metrics"></div>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="control-band">
+        <div class="section-inner">
+          <div class="section-heading">
+            <div>
+              <p class="kicker">Scope</p>
+              <h2>Filter the order cohort</h2>
+            </div>
+          </div>
+
+          <div class="filters-grid">
+            <label>
+              <span>Test code</span>
+              <select id="filter-test_code" data-field="test_code"></select>
+            </label>
+            <label>
+              <span>Ordering street</span>
+              <select id="filter-order_street" data-field="order_street"></select>
+            </label>
+            <label>
+              <span>Performing department</span>
+              <select id="filter-test_performing_dept" data-field="test_performing_dept"></select>
+            </label>
+            <label>
+              <span>Performing location</span>
+              <select id="filter-test_performing_location" data-field="test_performing_location"></select>
+            </label>
+            <label>
+              <span>Day type</span>
+              <select id="filter-day_type" data-field="day_type"></select>
+            </label>
+            <button id="reset-filters" class="reset-button" type="button">Reset filters</button>
+          </div>
+
+          <div class="filter-feedback">
+            <p class="filter-summary" id="filter-summary"></p>
+            <div class="filter-pills" id="filter-pills"></div>
           </div>
         </div>
       </section>
